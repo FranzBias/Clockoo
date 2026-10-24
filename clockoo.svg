@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Clockoo icon: classic twin-bell alarm clock, original design by Franz & Aldus, MIT -->
+  <defs>
+    <radialGradient id="body" cx="40%" cy="35%" r="70%">
+      <stop offset="0" stop-color="#ff5a4e"/>
+      <stop offset="1" stop-color="#c8161d"/>
+    </radialGradient>
+    <radialGradient id="bell" cx="40%" cy="35%" r="75%">
+      <stop offset="0" stop-color="#ff6b5f"/>
+      <stop offset="1" stop-color="#b3121a"/>
+    </radialGradient>
+  </defs>
+  <!-- legs -->
+  <path d="M17 52 L11 60 M47 52 L53 60" stroke="#5a0a0e" stroke-width="5" stroke-linecap="round"/>
+  <!-- hammer -->
+  <path d="M32 12 V6" stroke="#5a0a0e" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="32" cy="5" r="3" fill="#5a0a0e"/>
+  <!-- bells -->
+  <path d="M4.5 20 A11 11 0 0 1 20 4.5 Z" fill="url(#bell)" stroke="#5a0a0e" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M59.5 20 A11 11 0 0 0 44 4.5 Z" fill="url(#bell)" stroke="#5a0a0e" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- body -->
+  <circle cx="32" cy="35" r="24" fill="url(#body)" stroke="#5a0a0e" stroke-width="3"/>
+  <!-- face -->
+  <circle cx="32" cy="35" r="17.5" fill="#fffaf0" stroke="#5a0a0e" stroke-width="2"/>
+  <g stroke="#3a3a3a" stroke-width="2.4" stroke-linecap="round">
+    <path d="M32 20.5 V23.5 M32 46.5 V49.5 M17.5 35 H20.5 M43.5 35 H46.5"/>
+  </g>
+  <!-- hands at 10:10 -->
+  <path d="M32 35 L24.5 29.5 M32 35 L41 27" stroke="#222" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="32" cy="35" r="2.6" fill="#c8161d" stroke="#222" stroke-width="1.2"/>
+</svg>
