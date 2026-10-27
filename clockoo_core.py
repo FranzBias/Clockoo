@@ -11,7 +11,7 @@
 ##########################################################
 # SPDX-License-Identifier: MIT
 """
-clockoo_core.py — pure logic of Clockoo 🐦⏰
+clockoo_core.py — pure logic of Clockoo 🕰️
 
 Why this file exists: Clockoo must keep ringing even when its window is
 closed or Cinnamon restarts. So the GUI never schedules anything itself:
@@ -41,7 +41,7 @@ from pathlib import Path
 
 APP_NAME = "Clockoo"
 APP_ID = "clockoo"
-VERSION = "0.2.0"
+VERSION = "0.7.0"
 
 # "app" = the GTK app, "applet" = the Cinnamon applet. Every timer unit
 # carries the profile in its environment, so clockoo_ring.py reads the
@@ -54,6 +54,9 @@ HOME = Path.home()
 CONFIG_DIR = HOME / ".config" / (APP_NAME + _SUFFIX)
 CONFIG_FILE = CONFIG_DIR / "config.json"
 COUNTDOWNS_FILE = CONFIG_DIR / "countdowns.json"
+STOPWATCH_FILE = CONFIG_DIR / "stopwatch.json"
+POMODORO_LOG = CONFIG_DIR / "pomodoro-log.json"
+POMODORO_LOG_DAYS = 400              # older entries are dropped
 CACHE_DIR = HOME / ".cache" / (APP_NAME + _SUFFIX)
 UNIT_DIR = HOME / ".config" / "systemd" / "user"
 APP_DIR = Path(__file__).resolve().parent
@@ -64,7 +67,7 @@ UNIT_PREFIX = "clockoo%s-" % _SUFFIX               # clockoo- / clockoo-applet-
 OTHER_PREFIX = "clockoo-" if _SUFFIX else "clockoo-applet-"
 CUCKOO_UNIT = UNIT_PREFIX + "cuckoo"
 ALARM_UNIT_RE = re.compile(
-    r"^%salarm-([0-9a-f]{8})\.(timer|service)$" % re.escape(UNIT_PREFIX))
+    r"^%salarm-([0-9a-f]{8})(-warn)?\.(timer|service)$" % re.escape(UNIT_PREFIX))
 COUNTDOWN_UNIT = UNIT_PREFIX + "countdown-%s"
 COUNTDOWN_UNIT_RE = re.compile(
     r"^%scountdown-([0-9a-f]{8})\.(timer|service)$" % re.escape(UNIT_PREFIX))
@@ -86,12 +89,24 @@ DEFAULT_CONFIG = {
         "minute": 0,
         "sound": "cuckoo-clock.ogg",
         "count_hours": False,          # call N times, like a real cuckoo clock
+        "quiet": False,                # quiet night: no cuckoo between...
+        "quiet_from": 22,              # ...this hour (included)
+        "quiet_to": 7,                 # ...and this one (excluded)
     },
     "timer": {                         # last choices, reused by the tray
         "sound": "kitchen-timer.ogg",
         "voice": "",
         "repeat": 3,
+        "saved": [],                   # saved timers, in the user's order
     },
+    "pomodoro": {                      # minutes; rounds = work sessions,
+        "work": 25,                    # 0 = go on until cancelled
+        "short": 5,
+        "long": 15,
+        "every": 4,                    # a long break after this many works
+        "rounds": 4,
+    },
+    "icon_style": "auto",              # auto | light (wood) | dark (brass)
     "alarms": [],
 }
 
@@ -106,6 +121,10 @@ DEFAULT_ALARM = {
     "text": "",
     "voice": "",
     "repeat": 3,
+    "crescendo": False,        # volume grows from soft to full
+    "warn": False,             # a heads-up notification before ringing...
+    "warn_minutes": 10,        # ...this many minutes before
+    "snooze_minutes": 0,       # 0 = the general snooze setting
 }
 
 
@@ -230,8 +249,23 @@ def next_alarm(cfg, now=None):
 
 # ---------------------------------------------------------------- calendar
 
+def quiet_hours(cuckoo):
+    """Hours silenced by the quiet night (empty set when it is off).
+    22 -> 7 means 22, 23, 0, ..., 6: the hour 'to' itself calls again."""
+    if not cuckoo.get("quiet"):
+        return set()
+    start = int(cuckoo.get("quiet_from", 22)) % 24
+    end = int(cuckoo.get("quiet_to", 7)) % 24
+    hours, hour = set(), start
+    while hour != end:
+        hours.add(hour)
+        hour = (hour + 1) % 24
+    return hours
+
+
 def cuckoo_calendar(cuckoo):
-    hours = sorted({int(h) for h in cuckoo.get("hours", []) if 0 <= int(h) <= 23})
+    hours = sorted({int(h) for h in cuckoo.get("hours", []) if 0 <= int(h) <= 23}
+                   - quiet_hours(cuckoo))
     if not hours:
         return None
     minute = int(cuckoo.get("minute", 0)) % 60
@@ -249,6 +283,27 @@ def alarm_calendar(alarm):
     return None
 
 
+def warn_calendar(alarm):
+    """Calendar of the heads-up, warn_minutes before the alarm. Going back
+    past midnight moves every weekday (or the date) one day back."""
+    if not alarm.get("warn"):
+        return None
+    minutes = max(1, min(int(alarm.get("warn_minutes", 10)), 720))
+    hour, minute = parse_time(alarm["time"])
+    total = hour * 60 + minute - minutes
+    shift = -1 if total < 0 else 0
+    total %= 1440
+    clock = "%02d:%02d:00" % divmod(total, 60)
+    days = sorted({(int(d) + shift) % 7 for d in alarm.get("days", [])
+                   if 0 <= int(d) <= 6})
+    if days:
+        return "%s *-*-* %s" % (",".join(WEEKDAYS[d] for d in days), clock)
+    if alarm.get("date"):
+        day = datetime.strptime(alarm["date"], "%Y-%m-%d") + timedelta(days=shift)
+        return "%s %s" % (day.strftime("%Y-%m-%d"), clock)
+    return None
+
+
 # ---------------------------------------------------------------- systemd
 
 def _systemctl(*args):
@@ -259,7 +314,7 @@ def _systemctl(*args):
 UNIT_LABEL = "Clockoo applet" if PROFILE == "applet" else "Clockoo"
 
 
-def _unit_text(description, exec_args, calendar):
+def _unit_text(description, exec_args, calendar, persistent=False):
     # The app's units stay exactly as in 0.1.0 (no Environment line), so an
     # update does not rewrite and restart every timer.
     env = "Environment=%s\n" % PROFILE_ENV if PROFILE == "applet" else ""
@@ -277,9 +332,15 @@ def _unit_text(description, exec_args, calendar):
         "Description=%s (%s)\n\n"
         "[Timer]\n"
         "OnCalendar=%s\n"
-        "AccuracySec=1s\n\n"
+        "AccuracySec=1s\n"
+        "%s\n"
         "[Install]\n"
-        "WantedBy=timers.target\n" % (description, UNIT_LABEL, calendar)
+        "WantedBy=timers.target\n" % (
+            description, UNIT_LABEL, calendar,
+            # Persistent: an alarm missed while the computer was off rings
+            # at the next login. (One missed during suspend rings anyway,
+            # as soon as the computer wakes up.)
+            "Persistent=true\n" if persistent else "")
     )
     return service, timer
 
@@ -291,12 +352,18 @@ def _is_own_unit(name):
 
 
 def run_transient(unit, on_active_seconds, description, ring_args):
-    """systemd-run a one-shot ring (countdown, snooze) in this profile."""
+    """systemd-run a one-shot ring (countdown, snooze) in this profile.
+
+    The end is a wall-clock time (--on-calendar), not --on-active: the
+    monotonic clock stops during suspend, so a 10-minute timer with half an
+    hour of suspend in between would ring 10 minutes *after* waking up.
+    A calendar time that passed during suspend rings right at wake-up."""
+    end = datetime.now() + timedelta(seconds=max(1, int(on_active_seconds)))
     return subprocess.run([
         "systemd-run", "--user", "--unit", unit,
         "--description", "%s (%s)" % (description, UNIT_LABEL),
         "--setenv", PROFILE_ENV,
-        "--on-active=%ds" % on_active_seconds,
+        "--on-calendar=%s" % end.strftime("%Y-%m-%d %H:%M:%S"),
         "--timer-property=AccuracySec=1s",
         "/usr/bin/python3", str(RING_SCRIPT), *ring_args],
         capture_output=True, text=True)
@@ -316,12 +383,13 @@ def _write_if_changed(path, text):
 
 
 def _wanted_units(cfg):
-    """name -> (description, exec_args, calendar) for every active timer."""
+    """name -> (description, exec_args, calendar, persistent) for every
+    active timer. A missed cuckoo or heads-up is not worth ringing late."""
     wanted = {}
     cuckoo = cfg["cuckoo"]
     cal = cuckoo_calendar(cuckoo)
     if cuckoo.get("enabled") and cal:
-        wanted[CUCKOO_UNIT] = ("Cuckoo", ["cuckoo"], cal)
+        wanted[CUCKOO_UNIT] = ("Cuckoo", ["cuckoo"], cal, False)
     for alarm in cfg["alarms"]:
         if not alarm.get("enabled"):
             continue
@@ -332,7 +400,14 @@ def _wanted_units(cfg):
         if cal and (alarm.get("days") or next_ring(alarm)):
             name = "%salarm-%s" % (UNIT_PREFIX, alarm["id"])
             label = (alarm.get("name") or "Alarm").replace("\n", " ")
-            wanted[name] = (label, ["alarm", alarm["id"]], cal)
+            wanted[name] = (label, ["alarm", alarm["id"]], cal, True)
+            try:
+                warn_cal = warn_calendar(alarm)
+            except ValueError:
+                warn_cal = None
+            if warn_cal:
+                wanted[name + "-warn"] = (label + ", heads-up",
+                                          ["warn", alarm["id"]], warn_cal, False)
     return wanted
 
 
@@ -352,8 +427,8 @@ def apply(cfg):
             (UNIT_DIR / (name + ".service")).unlink(missing_ok=True)
 
     changed = []
-    for name, (desc, args, cal) in wanted.items():
-        service, timer = _unit_text(desc, args, cal)
+    for name, (desc, args, cal, persistent) in wanted.items():
+        service, timer = _unit_text(desc, args, cal, persistent)
         a = _write_if_changed(UNIT_DIR / (name + ".service"), service)
         b = _write_if_changed(UNIT_DIR / (name + ".timer"), timer)
         if a or b:
@@ -416,7 +491,9 @@ def find_countdown(countdown_id):
 
 
 def countdown_remaining(item, now=None):
-    """Seconds left (never negative)."""
+    """Seconds left (never negative). A paused countdown keeps its own."""
+    if item.get("paused"):
+        return max(0, int(item.get("left", 0)))
     now = now or datetime.now()
     try:
         end = datetime.fromisoformat(item["end"])
@@ -434,7 +511,139 @@ def format_duration(seconds):
     return "%02d:%02d" % (minutes, secs)
 
 
-def start_countdown(seconds, name="", sound="", text="", voice="", repeat=3):
+# ---------------------------------------------------------------- stopwatch
+#
+# The stopwatch keeps wall-clock times (epoch seconds), not a monotonic
+# clock, so it survives a restart of the app (or of Cinnamon) and keeps
+# counting while the computer sleeps, like a real stopwatch on a desk.
+
+def load_stopwatch():
+    state = {"running": False, "base": 0.0, "since": 0.0, "laps": []}
+    try:
+        data = json.loads(STOPWATCH_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            state.update(data)
+    except (OSError, ValueError):
+        pass
+    return state
+
+
+def save_stopwatch(state):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = STOPWATCH_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state) + "\n", encoding="utf-8")
+    os.replace(tmp, STOPWATCH_FILE)
+
+
+def snooze_for(cfg, alarm):
+    """Snooze minutes of one alarm: its own, else the general setting."""
+    return int(alarm.get("snooze_minutes") or cfg.get("snooze_minutes", 5))
+
+
+# ---------------------------------------------------------------- pomodoro
+#
+# A pomodoro is a chain of countdowns: work, short break, work, ...,
+# long break. Each countdown carries the state of the chain, and when it
+# rings clockoo_ring.py starts the next one right away. Cancelling the
+# running countdown ends the chain.
+
+def pomodoro_name(state):
+    from clockoo_i18n import _
+    if state["phase"] == "work":
+        total = int(state.get("rounds", 0))
+        count = ("%d/%d" % (state["n"], total)) if total else str(state["n"])
+        return "🍅 %s %s" % (_("Work"), count)
+    return "☕ " + (_("Long break") if state["phase"] == "long" else _("Break"))
+
+
+def next_pomodoro(state):
+    """State of the phase after `state`, or None when the chain is over."""
+    nxt = dict(state)
+    if state["phase"] == "work":
+        every = max(1, int(state.get("every", 4)))
+        nxt["phase"] = "long" if state["n"] % every == 0 else "short"
+    else:
+        rounds = int(state.get("rounds", 0))
+        if rounds and state["n"] >= rounds:
+            return None
+        nxt["phase"] = "work"
+        nxt["n"] = state["n"] + 1
+    return nxt
+
+
+def log_pomodoro(minutes, when=None):
+    """Remember one completed work session (called when it rings)."""
+    when = when or datetime.now()
+    try:
+        log = json.loads(POMODORO_LOG.read_text(encoding="utf-8"))
+        if not isinstance(log, list):
+            log = []
+    except (OSError, ValueError):
+        log = []
+    oldest = (when - timedelta(days=POMODORO_LOG_DAYS)).strftime("%Y-%m-%d")
+    log = [e for e in log if e.get("date", "") >= oldest]
+    log.append({"date": when.strftime("%Y-%m-%d"),
+                "time": when.strftime("%H:%M"), "minutes": int(minutes)})
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = POMODORO_LOG.with_suffix(".tmp")
+    tmp.write_text(json.dumps(log, indent=1) + "\n", encoding="utf-8")
+    os.replace(tmp, POMODORO_LOG)
+
+
+def pomodoro_stats(now=None):
+    """Completed work sessions: today, this week (from Monday), the last
+    7 days one by one (oldest first) and in all, with their minutes."""
+    now = now or datetime.now()
+    try:
+        log = json.loads(POMODORO_LOG.read_text(encoding="utf-8"))
+        if not isinstance(log, list):
+            log = []
+    except (OSError, ValueError):
+        log = []
+    today = now.date()
+    monday = today - timedelta(days=today.weekday())
+    stats = {"today": 0, "today_minutes": 0, "week": 0, "week_minutes": 0,
+             "total": 0, "total_minutes": 0, "days": []}
+    per_day = {}
+    for entry in log:
+        try:
+            day = datetime.strptime(entry["date"], "%Y-%m-%d").date()
+        except (KeyError, ValueError):
+            continue
+        minutes = int(entry.get("minutes", 0))
+        stats["total"] += 1
+        stats["total_minutes"] += minutes
+        if day == today:
+            stats["today"] += 1
+            stats["today_minutes"] += minutes
+        if monday <= day <= today:
+            stats["week"] += 1
+            stats["week_minutes"] += minutes
+        per_day[day] = per_day.get(day, 0) + 1
+    for back in range(6, -1, -1):
+        day = today - timedelta(days=back)
+        stats["days"].append([day.isoformat(), day.weekday(),
+                              per_day.get(day, 0)])
+    return stats
+
+
+def start_pomodoro_phase(cfg, state):
+    minutes = max(1, int(state.get(state["phase"], 1)))
+    tcfg = cfg.get("timer", {})
+    return start_countdown(minutes * 60, pomodoro_name(state),
+                           tcfg.get("sound", ""), "", tcfg.get("voice", ""),
+                           tcfg.get("repeat", 3), pomodoro=state)
+
+
+def start_pomodoro(cfg):
+    """Start a new chain with the pomodoro settings of cfg."""
+    state = dict(cfg.get("pomodoro") or DEFAULT_CONFIG["pomodoro"])
+    state.update(phase="work", n=1)
+    return start_pomodoro_phase(cfg, state)
+
+
+def start_countdown(seconds, name="", sound="", text="", voice="", repeat=3,
+                    pomodoro=None):
     """Start a countdown. Returns (item, error string or None)."""
     seconds = int(seconds)
     if seconds < 1:
@@ -450,6 +659,8 @@ def start_countdown(seconds, name="", sound="", text="", voice="", repeat=3):
         "voice": voice or "",
         "repeat": max(1, int(repeat)),
     }
+    if pomodoro:
+        item["pomodoro"] = pomodoro
     unit = COUNTDOWN_UNIT % item["id"]
     # Saved before systemd-run, so even a 1-second countdown finds its entry.
     _countdowns_rw(lambda items: items.append(item))
@@ -459,6 +670,49 @@ def start_countdown(seconds, name="", sound="", text="", voice="", repeat=3):
         _countdowns_rw(lambda items: _drop(items, item["id"]))
         return None, res.stderr.strip() or "systemd-run failed"
     return item, None
+
+
+def pause_countdown(countdown_id):
+    """Stop the timer unit but keep the entry, with the seconds left."""
+    item = find_countdown(countdown_id)
+    if not item or item.get("paused"):
+        return item
+    left = countdown_remaining(item)
+    unit = COUNTDOWN_UNIT % countdown_id
+    _systemctl("stop", unit + ".timer")
+
+    def change(items):
+        for entry in items:
+            if entry.get("id") == countdown_id:
+                entry["paused"] = True
+                entry["left"] = left
+    _countdowns_rw(change)
+    return find_countdown(countdown_id)
+
+
+def resume_countdown(countdown_id):
+    """Start a new timer unit for the seconds that were left.
+    Returns an error string or None."""
+    item = find_countdown(countdown_id)
+    if not item or not item.get("paused"):
+        return None
+    left = max(1, int(item.get("left", 1)))
+    end = (datetime.now() + timedelta(seconds=left)).isoformat(timespec="seconds")
+
+    def change(items):
+        for entry in items:
+            if entry.get("id") == countdown_id:
+                entry.pop("paused", None)
+                entry.pop("left", None)
+                entry["end"] = end
+    _countdowns_rw(change)
+    unit = COUNTDOWN_UNIT % countdown_id
+    _systemctl("reset-failed", unit + ".timer", unit + ".service")
+    res = run_transient(unit, left, "%s, timer" % (item.get("name") or "Timer"),
+                        ["countdown", countdown_id])
+    if res.returncode:
+        return res.stderr.strip() or "systemd-run failed"
+    return None
 
 
 def _drop(items, countdown_id):
@@ -501,7 +755,8 @@ def prune_countdowns(grace_seconds=5):
         keep = []
         for item in items:
             age = item.get("seconds", 0) - countdown_remaining(item, now)
-            if item.get("id") in active or age < grace_seconds:
+            if (item.get("id") in active or age < grace_seconds
+                    or item.get("paused")):       # a paused one has no unit
                 keep.append(item)
         items[:] = keep
 
@@ -539,24 +794,39 @@ def sound_path(cfg, name):
     return None
 
 
-def player_command(path):
-    """Command line that plays an audio file, or None."""
-    for player in ("pw-play", "paplay"):
-        if shutil.which(player):
-            return [player, str(path)]
+def player_command(path, volume=None):
+    """Command line that plays an audio file, or None.
+    volume: None = full, else 0.0 .. 1.0 (used by the crescendo)."""
+    if shutil.which("pw-play"):
+        cmd = ["pw-play"]
+        if volume is not None:
+            cmd.append("--volume=%.2f" % volume)
+        return cmd + [str(path)]
+    if shutil.which("paplay"):
+        cmd = ["paplay"]
+        if volume is not None:
+            cmd.append("--volume=%d" % int(65536 * volume))
+        return cmd + [str(path)]
     if shutil.which("ffplay"):
-        return ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
-                str(path)]
+        cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"]
+        if volume is not None:
+            cmd += ["-volume", str(int(100 * volume))]
+        return cmd + [str(path)]
     return None
 
 
-def play(path, wait=False):
+def play(path, wait=False, volume=None):
     """Play a file; returns the Popen (or None)."""
-    cmd = player_command(path)
+    cmd = player_command(path, volume)
     if not cmd:
         return None
+    # pw-play reads --volume with the locale: in Italian or German "0.20"
+    # would mean 0 (silence). The C locale makes the dot a decimal point.
+    env = dict(os.environ, LC_NUMERIC="C.UTF-8")
+    if env.get("LC_ALL"):             # LC_ALL would override LC_NUMERIC
+        env["LC_ALL"] = "C.UTF-8"
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
+                            stderr=subprocess.DEVNULL, env=env)
     if wait:
         proc.wait()
     return proc
@@ -673,28 +943,38 @@ def status(cfg):
         "countdowns": [dict(c, remaining=countdown_remaining(c))
                        for c in prune_countdowns()],
         "other_cuckoo": other_profile_cuckoo(),
+        "pomodoro": pomodoro_stats(),
         "piper": bool(piper_bin(cfg)),
         "voices": [v[0] for v in list_voices(cfg)],
     }
 
 
 def main(argv):
-    usage = ("usage: clockoo_core.py apply | status | prune | cancel ID |\n"
-             "       countdown SECONDS [NAME [SOUND [TEXT [VOICE [REPEAT]]]]]")
+    usage = ("usage: clockoo_core.py apply | status | prune | cancel|pause|resume ID |\n"
+             "       pomodoro | countdown SECONDS [NAME [SOUND [TEXT [VOICE [REPEAT]]]]]")
     if not argv:
         print(usage, file=sys.stderr)
         return 2
     command, args = argv[0], argv[1:]
     cfg = load_config()
+    from clockoo_i18n import set_lang      # names like "🍅 Lavoro 1/4"
+    set_lang(cfg.get("ui_lang"))
     if command == "apply":
         out = {"errors": apply(cfg)}
     elif command == "status":
         out = status(cfg)
     elif command == "prune":
         out = {"countdowns": prune_countdowns()}
+    elif command == "pause" and args:
+        out = {"paused": bool(pause_countdown(args[0]))}
+    elif command == "resume" and args:
+        out = {"error": resume_countdown(args[0])}
     elif command == "cancel" and args:
         cancel_countdown(args[0])
         out = {"cancelled": args[0]}
+    elif command == "pomodoro":
+        item, error = start_pomodoro(cfg)
+        out = {"error": error} if error else item
     elif command == "countdown" and args:
         fields = (args + [""] * 5)[:6]
         tcfg = cfg.get("timer", {})

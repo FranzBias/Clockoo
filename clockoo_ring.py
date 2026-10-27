@@ -11,7 +11,7 @@
 ##########################################################
 # SPDX-License-Identifier: MIT
 """
-clockoo_ring.py — the part of Clockoo 🐦⏰ that actually rings
+clockoo_ring.py — the part of Clockoo 🕰️ that actually rings
 
 Why this file exists: systemd user timers (written by clockoo_core.apply)
 start this script at the right minute, whether or not the Clockoo window
@@ -21,6 +21,7 @@ and its spoken text, and shows a notification with Stop / Snooze.
 Usage:
     clockoo_ring.py cuckoo
     clockoo_ring.py alarm <id> [--snooze]
+    clockoo_ring.py warn <id>          heads-up before an alarm
     clockoo_ring.py countdown <id>
 
 by Franz & Aldus
@@ -42,6 +43,9 @@ os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS",
                       "unix:path=/run/user/%d/bus" % os.getuid())
 
 GRACE_SECONDS = 45   # how long the notification waits for a click after ringing
+CRESCENDO_STEPS = 5  # a crescendo rings at least this many times...
+CRESCENDO_START = 0.2  # ...starting at this volume (1.0 = full)
+WARN_VOLUME = 0.35   # the heads-up plays the alarm sound once, softly
 
 
 def ring_cuckoo(cfg):
@@ -86,11 +90,18 @@ class AlarmRinger:
         voice = self.alarm.get("voice", "")
         # Synthesize before the first ring, so speech follows without a gap.
         core.speech_file(self.cfg, text, voice)
-        for _i in range(max(1, int(self.alarm.get("repeat", 1)))):
+        times = max(1, int(self.alarm.get("repeat", 1)))
+        crescendo = bool(self.alarm.get("crescendo"))
+        if crescendo:
+            times = max(times, CRESCENDO_STEPS)   # room for the volume to grow
+        for i in range(times):
             if self.stop_event.is_set():
                 break
             if sound:
-                self._run(core.play(sound))
+                # Crescendo: from soft to full volume, step by step.
+                volume = (CRESCENDO_START + (1 - CRESCENDO_START) * i / (times - 1)
+                          if crescendo else None)
+                self._run(core.play(sound, volume=volume))
             if self.stop_event.is_set():
                 break
             if text.strip():
@@ -104,7 +115,8 @@ class AlarmRinger:
 
 
 def schedule_snooze(cfg, alarm_id):
-    minutes = int(cfg.get("snooze_minutes", 5))
+    alarm = core.find_alarm(cfg, alarm_id) or {}
+    minutes = core.snooze_for(cfg, alarm)
     unit = core.SNOOZE_UNIT % (alarm_id, int(time.time()))
     core.run_transient(unit, minutes * 60, "Snooze",
                        ["alarm", alarm_id, "--snooze"])
@@ -125,7 +137,34 @@ def ring_alarm(cfg, alarm_id, snoozed):
         body += " — " + alarm["text"]
     ring_with_notification(
         cfg, alarm, "⏰ " + (alarm.get("name") or _("Alarm")), body,
-        lambda: schedule_snooze(cfg, alarm_id))
+        lambda: schedule_snooze(cfg, alarm_id),
+        snooze_minutes=core.snooze_for(cfg, alarm))
+
+
+def ring_warn(cfg, alarm_id):
+    """Heads-up some minutes before an alarm: a soft sound and a quiet
+    notification, no Stop/Snooze (the alarm itself will ring later)."""
+    alarm = core.find_alarm(cfg, alarm_id)
+    if not alarm or not alarm.get("enabled") or not alarm.get("warn"):
+        return
+    minutes = int(alarm.get("warn_minutes", 10))
+    title = "🔔 " + (_("In %d min") % minutes) + ": " + \
+        (alarm.get("name") or _("Alarm"))
+    body = _("Alarm at %s") % alarm["time"]
+    try:
+        import gi
+        gi.require_version("Notify", "0.7")
+        from gi.repository import GLib, Notify
+        if Notify.init(core.APP_NAME):
+            note = Notify.Notification.new(title, body, "alarm-symbolic")
+            note.set_hint("desktop-entry", GLib.Variant("s", core.APP_ID))
+            note.show()
+    except (ImportError, ValueError):
+        pass
+    sound = core.sound_path(cfg, alarm.get("sound")) or \
+        core.sound_path(cfg, core.DEFAULT_ALARM["sound"])
+    if sound:
+        core.play(sound, wait=True, volume=WARN_VOLUME)
 
 
 def ring_countdown(cfg, countdown_id):
@@ -133,6 +172,9 @@ def ring_countdown(cfg, countdown_id):
     if not item:
         return
     core.forget_countdown(countdown_id)
+    if item.get("pomodoro"):
+        ring_pomodoro(cfg, item)
+        return
     body = _("Timer finished") + " — " + core.format_duration(item["seconds"])
     if item.get("text"):
         body += " — " + item["text"]
@@ -148,9 +190,37 @@ def ring_countdown(cfg, countdown_id):
         cfg, item, "⏳ " + (item.get("name") or _("Timer")), body, snooze)
 
 
-def ring_with_notification(cfg, alarm, title, body, snooze):
+def ring_pomodoro(cfg, item):
+    """End of a pomodoro phase: start the next one at once (so the chain
+    keeps its rhythm), then ring. The second button stops the chain."""
+    state = item["pomodoro"]
+    if state.get("phase") == "work":
+        core.log_pomodoro(round(item.get("seconds", 0) / 60))
+    nxt = core.next_pomodoro(state)
+    started = None
+    if nxt:
+        started, _error = core.start_pomodoro_phase(cfg, nxt)
+    if started:
+        body = _("Now: %s, %s") % (
+            started["name"], core.format_duration(started["seconds"]))
+    else:
+        body = _("Pomodoro finished")
+
+    def stop_chain():
+        if started:
+            core.cancel_countdown(started["id"])
+        return None
+
+    ring_with_notification(
+        cfg, item, item.get("name") or "🍅", body, stop_chain,
+        snooze_label=_("Stop pomodoro") if started else False)
+
+
+def ring_with_notification(cfg, alarm, title, body, snooze,
+                           snooze_minutes=None, snooze_label=None):
     """Ring `alarm` and show a notification with Stop / Snooze.
-    snooze() schedules the next ring and returns its datetime."""
+    snooze() schedules the next ring and returns its datetime (or None).
+    snooze_label replaces the "Snooze N min" button text."""
     ringer = AlarmRinger(cfg, alarm)
     worker = threading.Thread(target=ringer.ring, daemon=True)
 
@@ -182,18 +252,20 @@ def ring_with_notification(cfg, alarm, title, body, snooze):
     def on_snooze(*_args):
         ringer.stop()
         when = snooze()
-        info = Notify.Notification.new(
-            title, _("Snoozed until %s") % when.strftime("%H:%M"),
-            "alarm-symbolic")
-        info.show()
+        if when:
+            info = Notify.Notification.new(
+                title, _("Snoozed until %s") % when.strftime("%H:%M"),
+                "alarm-symbolic")
+            info.show()
         loop.quit()
 
     caps = Notify.get_server_caps() or []
     if "actions" in caps:
         note.add_action("stop", _("Stop"), on_stop)
-        note.add_action("snooze",
-                        _("Snooze %d min") % int(cfg.get("snooze_minutes", 5)),
-                        on_snooze)
+        minutes = snooze_minutes or int(cfg.get("snooze_minutes", 5))
+        label = snooze_label or (_("Snooze %d min") % minutes)
+        if snooze_label is not False:
+            note.add_action("snooze", label, on_snooze)
     note.connect("closed", lambda *_a: on_stop())
     note.show()
 
@@ -213,7 +285,7 @@ def ring_with_notification(cfg, alarm, title, body, snooze):
 
 
 def main(argv):
-    if not argv or argv[0] not in ("cuckoo", "alarm", "countdown"):
+    if not argv or argv[0] not in ("cuckoo", "alarm", "warn", "countdown"):
         print(__doc__.strip(), file=sys.stderr)
         return 2
     cfg = core.load_config()
@@ -224,6 +296,8 @@ def main(argv):
         return 2
     elif argv[0] == "alarm":
         ring_alarm(cfg, argv[1], "--snooze" in argv[2:])
+    elif argv[0] == "warn":
+        ring_warn(cfg, argv[1])
     else:
         ring_countdown(cfg, argv[1])
     return 0

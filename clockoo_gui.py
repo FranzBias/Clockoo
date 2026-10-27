@@ -11,7 +11,7 @@
 ##########################################################
 # SPDX-License-Identifier: MIT
 """
-clockoo_gui.py — window and tray icon of Clockoo 🐦⏰
+clockoo_gui.py — window and tray icon of Clockoo 🕰️
 
 Why this file exists: it is the friendly face of Clockoo. It edits the
 config (cuckoo hours, alarms, sounds, voices) and calls
@@ -28,14 +28,17 @@ by Franz & Aldus
 import os
 import sys
 import threading
+import time
+import uuid
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import gi  # noqa: E402
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
 gi.require_version("Pango", "1.0")
-from gi.repository import Gio, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 try:
     gi.require_version("XApp", "1.0")
@@ -47,14 +50,68 @@ import clockoo_core as core               # noqa: E402
 from clockoo_i18n import _, set_lang, LANGS  # noqa: E402
 
 APP_ID = "com.bybias.Clockoo"
-ICON_NAME = "clockoo"
+ICON_NAME = "clockoo"              # wooden mantel clock, for light themes
+ICON_NAME_DARK = "clockoo-dark"    # brass mantel clock, for dark themes
 FALLBACK_ICON = "alarm-symbolic"
 LANG_NAMES = {"en": "English", "it": "Italiano", "de": "Deutsch"}
+ICON_STYLES = ("auto", "light", "dark")
+
+# Once-mode day buttons stay clickable but look switched off.
+CSS = b"""
+.clockoo-dimmed { opacity: 0.45; }
+"""
 
 
-def icon_name():
+def theme_is_dark():
+    """True when the GTK theme draws light text on a dark background."""
+    settings = Gtk.Settings.get_default()
+    if settings and settings.get_property("gtk-application-prefer-dark-theme"):
+        return True
+    name = (settings.get_property("gtk-theme-name") if settings else "") or ""
+    if "dark" in name.lower():
+        return True
+    # Ask the theme itself: the luminance of a window's text colour.
+    probe = Gtk.Window()
+    color = probe.get_style_context().get_color(Gtk.StateFlags.NORMAL)
+    probe.destroy()
+    luminance = 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
+    return luminance > 0.6
+
+
+def icon_name(cfg=None):
+    """Pick the icon: the user's choice, or follow the theme ('auto')."""
+    style = (cfg or {}).get("icon_style", "auto")
+    dark = theme_is_dark() if style == "auto" else style == "dark"
+    wanted = ICON_NAME_DARK if dark else ICON_NAME
     theme = Gtk.IconTheme.get_default()
-    return ICON_NAME if theme and theme.has_icon(ICON_NAME) else FALLBACK_ICON
+    for name in (wanted, ICON_NAME):
+        if theme and theme.has_icon(name):
+            return name
+    return FALLBACK_ICON
+
+
+def center_on_pointer_monitor(window):
+    """Place a window in the middle of the monitor under the mouse.
+
+    Without this, on two monitors the window manager may centre the window
+    on the whole desktop, i.e. half on each screen."""
+    display = Gdk.Display.get_default()
+    if not display:
+        return
+    seat = display.get_default_seat()
+    pointer = seat.get_pointer() if seat else None
+    if pointer:
+        _screen, x, y = pointer.get_position()
+        monitor = display.get_monitor_at_point(x, y)
+    else:
+        monitor = display.get_primary_monitor() or display.get_monitor(0)
+    if not monitor:
+        return
+    area = monitor.get_workarea()
+    width, height = window.get_size()
+    width, height = min(width, area.width), min(height, area.height)
+    window.move(area.x + (area.width - width) // 2,
+                area.y + (area.height - height) // 2)
 
 
 def day_names():
@@ -73,6 +130,14 @@ def days_summary(alarm):
         return _("Weekend")
     names = day_names()
     return ", ".join(names[d] for d in days)
+
+
+def minutes_text(minutes):
+    """75 -> '1 h 15 min', 40 -> '40 min'."""
+    hours, rest = divmod(int(minutes), 60)
+    if not hours:
+        return _("%d min") % rest
+    return ("%d h %d min" % (hours, rest)) if rest else ("%d h" % hours)
 
 
 def when_text(when):
@@ -198,22 +263,39 @@ class AlarmDialog(Gtk.Dialog):
         grid.attach(tbox, 1, row, 1, 1)
         row += 1
 
-        dbox = Gtk.Box(spacing=2)
-        dbox.get_style_context().add_class("linked")
+        # Two choices under the time: repeat on some days, or ring once.
+        # In "once" mode the day buttons look switched off but stay
+        # clickable: clicking one moves the choice back to "Days".
+        self._syncing = False
+        saved_days = list(alarm.get("days", []))
+        self._last_days = saved_days or [0, 1, 2, 3, 4]
+        self.mode_days = Gtk.RadioButton.new_with_label(None, _("Days"))
+        self.mode_once = Gtk.RadioButton.new_with_label_from_widget(
+            self.mode_days, _("No day = rings once"))
+        mbox = Gtk.Box(spacing=18)
+        mbox.pack_start(self.mode_days, False, False, 0)
+        mbox.pack_start(self.mode_once, False, False, 0)
+        grid.attach(mbox, 1, row, 1, 1)
+        row += 1
+
+        self.dbox = Gtk.Box(spacing=2)
+        self.dbox.get_style_context().add_class("linked")
         self.days = []
         for index, name in enumerate(day_names()):
             btn = Gtk.ToggleButton(label=name)
-            btn.set_active(index in alarm.get("days", []))
-            dbox.pack_start(btn, True, True, 0)
+            btn.set_active(index in saved_days)
+            btn.connect("toggled", self.on_day_toggled)
+            self.dbox.pack_start(btn, True, True, 0)
             self.days.append(btn)
-        hint = Gtk.Label(label=_("No day = rings once"), xalign=0)
-        hint.get_style_context().add_class("dim-label")
-        vdays = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        vdays.pack_start(dbox, False, False, 0)
-        vdays.pack_start(hint, False, False, 0)
-        grid.attach(label(_("Days")), 0, row, 1, 1)
-        grid.attach(vdays, 1, row, 1, 1)
+        grid.attach(self.dbox, 1, row, 1, 1)
         row += 1
+
+        if saved_days:
+            self.mode_days.set_active(True)
+        else:
+            self.mode_once.set_active(True)
+        self._show_once(not saved_days)
+        self.mode_once.connect("toggled", self.on_mode_toggled)
 
         self.sound = SoundPicker(cfg, alarm.get("sound"))
         grid.attach(label(_("Sound")), 0, row, 1, 1)
@@ -229,8 +311,42 @@ class AlarmDialog(Gtk.Dialog):
         grid.attach(rbox, 1, row, 1, 1)
         row += 1
 
-        text_label = Gtk.Label(label=_("Text to read aloud (optional)"),
-                               xalign=0)
+        self.crescendo = Gtk.CheckButton(
+            label=_("Crescendo: the volume grows from soft to full"))
+        self.crescendo.set_active(bool(alarm.get("crescendo")))
+        grid.attach(self.crescendo, 1, row, 1, 1)
+        row += 1
+
+        # Heads-up: a box to switch it on, then how many minutes before.
+        wbox = Gtk.Box(spacing=6)
+        self.warn = Gtk.CheckButton(label=_("Warn me before"))
+        self.warn.set_active(bool(alarm.get("warn")))
+        self.warn_minutes = Gtk.SpinButton.new_with_range(1, 120, 1)
+        self.warn_minutes.set_value(int(alarm.get("warn_minutes", 10)))
+        self.warn_minutes.set_numeric(True)
+        self.warn_minutes.set_sensitive(self.warn.get_active())
+        self.warn.connect("toggled", lambda b: self.warn_minutes.set_sensitive(
+            b.get_active()))
+        wbox.pack_start(self.warn, False, False, 0)
+        wbox.pack_start(self.warn_minutes, False, False, 0)
+        wbox.pack_start(Gtk.Label(label=_("minutes")), False, False, 0)
+        grid.attach(wbox, 1, row, 1, 1)
+        row += 1
+
+        sbox = Gtk.Box(spacing=6)
+        self.snooze = Gtk.SpinButton.new_with_range(0, 60, 1)
+        self.snooze.set_value(int(alarm.get("snooze_minutes") or 0))
+        self.snooze.set_numeric(True)
+        sbox.pack_start(self.snooze, False, False, 0)
+        hint = Gtk.Label(label=_("min (0 = general setting: %d)")
+                         % int(cfg.get("snooze_minutes", 5)))
+        hint.get_style_context().add_class("dim-label")
+        sbox.pack_start(hint, False, False, 0)
+        grid.attach(label(_("Snooze")), 0, row, 1, 1)
+        grid.attach(sbox, 1, row, 1, 1)
+        row += 1
+
+        text_label = Gtk.Label(label=_("Text to read (optional)"), xalign=0)
         grid.attach(text_label, 0, row, 2, 1)
         row += 1
         self.text = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR)
@@ -264,6 +380,41 @@ class AlarmDialog(Gtk.Dialog):
         spin.set_text("%02d" % spin.get_value_as_int())
         return True
 
+    def _show_once(self, once):
+        ctx = self.dbox.get_style_context()
+        if once:
+            ctx.add_class("clockoo-dimmed")
+        else:
+            ctx.remove_class("clockoo-dimmed")
+
+    def _set_days(self, days):
+        self._syncing = True
+        for index, btn in enumerate(self.days):
+            btn.set_active(index in days)
+        self._syncing = False
+
+    def on_mode_toggled(self, radio):
+        if self._syncing:
+            return
+        once = radio.get_active()
+        if once:
+            current = [i for i, b in enumerate(self.days) if b.get_active()]
+            if current:
+                self._last_days = current
+            self._set_days([])
+        elif not any(b.get_active() for b in self.days):
+            self._set_days(self._last_days)
+        self._show_once(once)
+
+    def on_day_toggled(self, btn):
+        if self._syncing:
+            return
+        if btn.get_active() and self.mode_once.get_active():
+            self._syncing = True
+            self.mode_days.set_active(True)
+            self._syncing = False
+            self._show_once(False)
+
     def get_text(self):
         buf = self.text.get_buffer()
         return buf.get_text(buf.get_start_iter(), buf.get_end_iter(),
@@ -280,13 +431,18 @@ class AlarmDialog(Gtk.Dialog):
         alarm["name"] = self.name.get_text().strip() or _("Alarm")
         alarm["time"] = "%02d:%02d" % (self.hour.get_value_as_int(),
                                        self.minute.get_value_as_int())
-        alarm["days"] = [i for i, b in enumerate(self.days) if b.get_active()]
+        alarm["days"] = [] if self.mode_once.get_active() else \
+            [i for i, b in enumerate(self.days) if b.get_active()]
         alarm["date"] = None if alarm["days"] else \
             core.next_once_date(alarm["time"])
         alarm["sound"] = self.sound.get()
         alarm["repeat"] = self.repeat.get_value_as_int()
         alarm["text"] = self.get_text()
         alarm["voice"] = self.voice.get_active_id() or ""
+        alarm["crescendo"] = self.crescendo.get_active()
+        alarm["warn"] = self.warn.get_active()
+        alarm["warn_minutes"] = self.warn_minutes.get_value_as_int()
+        alarm["snooze_minutes"] = self.snooze.get_value_as_int()
         alarm["enabled"] = True
         return alarm
 
@@ -313,6 +469,10 @@ class AlarmRow(Gtk.ListBoxRow):
             detail += "  ·  " + when_text(when)
         if alarm.get("text"):
             detail += "  ·  🗣"
+        if alarm.get("crescendo"):
+            detail += "  ·  📈"
+        if alarm.get("warn"):
+            detail += "  ·  🔔 −%d′" % int(alarm.get("warn_minutes", 10))
         sub = Gtk.Label(label=detail, xalign=0)
         sub.get_style_context().add_class("dim-label")
         info.pack_start(name, False, False, 0)
@@ -363,8 +523,11 @@ class CountdownRow(Gtk.ListBoxRow):
             end = datetime.fromisoformat(item["end"]).strftime("%H:%M:%S")
         except (KeyError, ValueError):
             end = "?"
-        detail = core.format_duration(item.get("seconds", 0)) + "  ·  " + \
-            _("ends at %s") % end
+        if item.get("paused"):
+            end_text = "⏸ " + _("paused")
+        else:
+            end_text = _("ends at %s") % end
+        detail = core.format_duration(item.get("seconds", 0)) + "  ·  " + end_text
         if item.get("text"):
             detail += "  ·  🗣"
         sub = Gtk.Label(label=detail, xalign=0)
@@ -372,6 +535,15 @@ class CountdownRow(Gtk.ListBoxRow):
         info.pack_start(name, False, False, 0)
         info.pack_start(sub, False, False, 0)
         box.pack_start(info, True, True, 0)
+
+        paused = bool(item.get("paused"))
+        toggle = Gtk.Button.new_from_icon_name(
+            "media-playback-start-symbolic" if paused else
+            "media-playback-pause-symbolic", Gtk.IconSize.BUTTON)
+        toggle.set_tooltip_text(_("Resume") if paused else _("Pause"))
+        toggle.set_valign(Gtk.Align.CENTER)
+        toggle.connect("clicked", lambda *_a: window.toggle_countdown(item))
+        box.pack_start(toggle, False, False, 0)
 
         cancel = Gtk.Button(label=_("Cancel"), valign=Gtk.Align.CENTER)
         cancel.connect("clicked",
@@ -388,6 +560,49 @@ class CountdownRow(Gtk.ListBoxRow):
         return left
 
 
+class SavedTimerRow(Gtk.ListBoxRow):
+    """One saved timer: duration, name, ▶ start, ↑ ↓ move, delete."""
+
+    def __init__(self, window, item, index, count):
+        super().__init__()
+        self.item = item
+        box = Gtk.Box(spacing=8, margin=6, margin_start=10)
+        self.add(box)
+
+        clock = Gtk.Label(xalign=0)
+        clock.set_markup("<span size='large' weight='bold' "
+                         "font_features='tnum'>%s</span>"
+                         % core.format_duration(item.get("seconds", 0)))
+        box.pack_start(clock, False, False, 0)
+
+        text = item.get("name") or _("Timer")
+        if item.get("text"):
+            text += "  ·  🗣"
+        name = Gtk.Label(label=text, xalign=0)
+        name.set_ellipsize(Pango.EllipsizeMode.END)
+        box.pack_start(name, True, True, 0)
+
+        def icon_button(icon, tip, callback, sensitive=True):
+            btn = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+            btn.set_tooltip_text(tip)
+            btn.set_valign(Gtk.Align.CENTER)
+            btn.set_sensitive(sensitive)
+            btn.connect("clicked", lambda *_a: callback())
+            box.pack_start(btn, False, False, 0)
+            return btn
+
+        start = icon_button("media-playback-start-symbolic", _("Start"),
+                            lambda: window.start_saved_timer(item))
+        start.get_style_context().add_class("suggested-action")
+        icon_button("go-up-symbolic", _("Move up"),
+                    lambda: window.move_saved_timer(index, -1), index > 0)
+        icon_button("go-down-symbolic", _("Move down"),
+                    lambda: window.move_saved_timer(index, 1),
+                    index < count - 1)
+        icon_button("user-trash-symbolic", _("Delete"),
+                    lambda: window.delete_saved_timer(item))
+
+
 # ------------------------------------------------------------------ window
 
 class MainWindow(Gtk.ApplicationWindow):
@@ -396,7 +611,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self.app = app
         self.cfg = app.cfg
         self.set_default_size(560, 640)
-        self.set_icon_name(icon_name())
+        self.set_position(Gtk.WindowPosition.NONE)   # we place it ourselves
+        self.set_icon_name(icon_name(self.cfg))
         self._cuckoo_timeout = None
 
         header = Gtk.HeaderBar(show_close_button=True)
@@ -417,6 +633,8 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.stack.add_titled(self._alarms_page(), "alarms", "⏰ " + _("Alarms"))
         self.stack.add_titled(self._timer_page(), "timer", "⏳ " + _("Timer"))
+        self.stack.add_titled(self._stopwatch_page(), "stopwatch",
+                              "⏱ " + _("Stopwatch"))
         self.stack.add_titled(self._cuckoo_page(), "cuckoo", "🐦 " + _("Cuckoo"))
         self.add(self.stack)
 
@@ -432,6 +650,9 @@ class MainWindow(Gtk.ApplicationWindow):
         if self._countdown_timeout:
             GLib.source_remove(self._countdown_timeout)
             self._countdown_timeout = None
+        if self.sw_timeout:
+            GLib.source_remove(self.sw_timeout)
+            self.sw_timeout = None
 
     # -- settings popover (interface language)
 
@@ -464,6 +685,16 @@ class MainWindow(Gtk.ApplicationWindow):
         bundled.connect("clicked", lambda *_a: self.set_sounds_dir(""))
         box.pack_start(bundled, False, False, 0)
 
+        box.pack_start(Gtk.Label(label=_("Icon"), xalign=0, margin_top=6),
+                       False, False, 0)
+        icon_combo = Gtk.ComboBoxText()
+        icon_combo.append("auto", _("Follow the theme"))
+        icon_combo.append("light", _("Wood (light themes)"))
+        icon_combo.append("dark", _("Brass (dark themes)"))
+        icon_combo.set_active_id(self.cfg.get("icon_style", "auto"))
+        icon_combo.connect("changed", self.on_icon_style)
+        box.pack_start(icon_combo, False, False, 0)
+
         version = Gtk.Label(label="%s %s · byBias" % (core.APP_NAME,
                                                       core.VERSION))
         version.get_style_context().add_class("dim-label")
@@ -477,6 +708,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self.cfg["ui_lang"] = combo.get_active_id()
         core.save_config(self.cfg)
         self.app.rebuild()
+
+    def on_icon_style(self, combo):
+        self.cfg["icon_style"] = combo.get_active_id() or "auto"
+        core.save_config(self.cfg)
+        self.app.update_icons()
 
     def on_sounds_dir(self, chooser):
         path = chooser.get_filename()
@@ -594,7 +830,7 @@ class MainWindow(Gtk.ApplicationWindow):
         row += 1
 
         self.timer_text = Gtk.Entry(
-            hexpand=True, placeholder_text=_("Text to read aloud (optional)"))
+            hexpand=True, placeholder_text=_("Text to read (optional)"))
         grid.attach(label("🗣"), 0, row, 1, 1)
         grid.attach(self.timer_text, 1, row, 1, 1)
         row += 1
@@ -635,7 +871,83 @@ class MainWindow(Gtk.ApplicationWindow):
         start.get_style_context().add_class("suggested-action")
         start.connect("clicked", lambda *_a: self.on_custom_start())
         custom.pack_end(start, False, False, 0)
+        save = Gtk.Button(label="💾 " + _("Save"))
+        save.set_tooltip_text(_("Save this timer for later"))
+        save.connect("clicked", lambda *_a: self.on_save_timer())
+        custom.pack_end(save, False, False, 0)
         grid.attach(custom, 0, row, 2, 1)
+        row += 1
+
+        # Saved timers: start with one click, move up/down, sort, delete.
+        saved_head = Gtk.Box(spacing=6)
+        saved_head.pack_start(heading(_("Saved timers")), True, True, 0)
+        for text, key in ((_("By duration"), "seconds"),
+                          (_("By name"), "name")):
+            btn = Gtk.Button(label="⇅ " + text)
+            btn.set_tooltip_text(_("Sort the saved timers"))
+            btn.connect("clicked", lambda _b, k=key: self.sort_saved_timers(k))
+            saved_head.pack_end(btn, False, False, 0)
+        grid.attach(saved_head, 0, row, 2, 1)
+        row += 1
+        self.saved_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.saved_list.get_style_context().add_class("frame")
+        placeholder = Gtk.Label(
+            label=_("No saved timers. Set one above and press 💾."), margin=18)
+        placeholder.get_style_context().add_class("dim-label")
+        placeholder.show()
+        self.saved_list.set_placeholder(placeholder)
+        grid.attach(self.saved_list, 0, row, 2, 1)
+        row += 1
+
+        # Pomodoro: work and breaks in a chain, one click to start.
+        grid.attach(heading("🍅 " + _("Pomodoro")), 0, row, 2, 1)
+        row += 1
+        pcfg = self.cfg.get("pomodoro") or core.DEFAULT_CONFIG["pomodoro"]
+        pgrid = Gtk.Grid(column_spacing=8, row_spacing=6)
+        self.pomo_spins = {}
+        fields = (("work", _("Work"), 1, 180, _("min")),
+                  ("short", _("Break"), 1, 60, _("min")),
+                  ("long", _("Long break"), 1, 120, _("min")),
+                  ("every", _("Long break every"), 1, 12, _("works")),
+                  ("rounds", _("Works in all"), 0, 99, _("(0 = no end)")))
+        for index, (key, text, low, high, unit) in enumerate(fields):
+            spin = Gtk.SpinButton.new_with_range(low, high, 1)
+            spin.set_value(int(pcfg.get(key, core.DEFAULT_CONFIG["pomodoro"][key])))
+            spin.set_numeric(True)
+            self.pomo_spins[key] = spin
+            pgrid.attach(label(text), 0, index, 1, 1)
+            pgrid.attach(spin, 1, index, 1, 1)
+            unit_label = Gtk.Label(label=unit, xalign=0)
+            unit_label.get_style_context().add_class("dim-label")
+            pgrid.attach(unit_label, 2, index, 1, 1)
+        pomo_start = Gtk.Button(label="🍅 " + _("Start pomodoro"),
+                                valign=Gtk.Align.END, hexpand=True,
+                                halign=Gtk.Align.END)
+        pomo_start.get_style_context().add_class("suggested-action")
+        pomo_start.connect("clicked", lambda *_a: self.on_pomodoro_start())
+        pgrid.attach(pomo_start, 3, 0, 1, len(fields))
+        grid.attach(pgrid, 0, row, 2, 1)
+        row += 1
+
+        # Statistics: completed work sessions, today / week / last 7 days.
+        self.pomo_summary = Gtk.Label(xalign=0, wrap=True)
+        grid.attach(self.pomo_summary, 0, row, 2, 1)
+        row += 1
+        bars = Gtk.Grid(column_spacing=10, row_spacing=2,
+                        column_homogeneous=True)
+        self.pomo_bars = []
+        for column in range(7):
+            count = Gtk.Label()
+            count.get_style_context().add_class("dim-label")
+            bar = Gtk.LevelBar(orientation=Gtk.Orientation.VERTICAL,
+                               inverted=True, height_request=48)
+            bar.set_mode(Gtk.LevelBarMode.CONTINUOUS)
+            day = Gtk.Label()
+            bars.attach(count, column, 0, 1, 1)
+            bars.attach(bar, column, 1, 1, 1)
+            bars.attach(day, column, 2, 1, 1)
+            self.pomo_bars.append((count, bar, day))
+        grid.attach(bars, 0, row, 2, 1)
         row += 1
 
         grid.attach(heading(_("Running timers")), 0, row, 2, 1)
@@ -651,7 +963,118 @@ class MainWindow(Gtk.ApplicationWindow):
 
         scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
         scroll.add(grid)
+        self.refresh_saved_timers()
+        self.refresh_pomodoro_stats()
         return scroll
+
+    def refresh_pomodoro_stats(self):
+        stats = core.pomodoro_stats()
+        self.pomo_summary.set_markup(
+            "<b>%s</b>  %d 🍅 (%s)   ·   <b>%s</b>  %d 🍅 (%s)" % (
+                GLib.markup_escape_text(_("Today")), stats["today"],
+                minutes_text(stats["today_minutes"]),
+                GLib.markup_escape_text(_("This week")), stats["week"],
+                minutes_text(stats["week_minutes"])))
+        top = max([1] + [count for _d, _w, count in stats["days"]])
+        names = day_names()
+        for (count_label, bar, day_label), (_date, weekday, count) in zip(
+                self.pomo_bars, stats["days"]):
+            count_label.set_text(str(count) if count else "")
+            bar.set_max_value(top)
+            bar.set_value(count)
+            day_label.set_text(names[weekday])
+
+    def on_pomodoro_start(self):
+        self.cfg["pomodoro"] = {key: spin.get_value_as_int()
+                                for key, spin in self.pomo_spins.items()}
+        tcfg = self.cfg["timer"]
+        tcfg["sound"] = self.timer_sound.get()
+        tcfg["voice"] = self.timer_voice.get_active_id() or ""
+        core.save_config(self.cfg)
+        _item, error = core.start_pomodoro(self.cfg)
+        self.refresh_countdowns()
+        if error:
+            message(self, _("Could not start the timer"), detail=error)
+
+    # -- saved timers
+
+    def _custom_seconds(self):
+        hours, minutes, seconds = (s.get_value_as_int()
+                                   for s in self.timer_spins)
+        return hours * 3600 + minutes * 60 + seconds
+
+    def on_save_timer(self):
+        total = self._custom_seconds()
+        if total <= 0:
+            return
+        saved = self.cfg["timer"].setdefault("saved", [])
+        saved.append({
+            "id": uuid.uuid4().hex[:8],
+            "name": self.timer_name.get_text().strip(),
+            "seconds": total,
+            "sound": self.timer_sound.get(),
+            "text": self.timer_text.get_text().strip(),
+            "voice": self.timer_voice.get_active_id() or "",
+        })
+        core.save_config(self.cfg)
+        self.refresh_saved_timers()
+        self.app.build_menu()
+
+    def refresh_saved_timers(self):
+        for child in self.saved_list.get_children():
+            self.saved_list.remove(child)
+        saved = self.cfg["timer"].get("saved", [])
+        for index, item in enumerate(saved):
+            self.saved_list.add(SavedTimerRow(self, item, index, len(saved)))
+        self.saved_list.show_all()
+
+    def start_saved_timer(self, item):
+        _item, error = core.start_countdown(
+            int(item.get("seconds", 0)), item.get("name", ""),
+            item.get("sound") or self.cfg["timer"].get("sound"),
+            item.get("text", ""), item.get("voice", ""),
+            self.cfg["timer"].get("repeat", 3))
+        self.refresh_countdowns()
+        if error:
+            message(self, _("Could not start the timer"), detail=error)
+
+    def move_saved_timer(self, index, step):
+        saved = self.cfg["timer"].get("saved", [])
+        other = index + step
+        if 0 <= other < len(saved):
+            saved[index], saved[other] = saved[other], saved[index]
+            core.save_config(self.cfg)
+            self.refresh_saved_timers()
+            self.app.build_menu()
+
+    def sort_saved_timers(self, key):
+        saved = self.cfg["timer"].get("saved", [])
+        if key == "name":
+            saved.sort(key=lambda t: (t.get("name") or "").casefold())
+        else:
+            saved.sort(key=lambda t: int(t.get("seconds", 0)))
+        core.save_config(self.cfg)
+        self.refresh_saved_timers()
+        self.app.build_menu()
+
+    def delete_saved_timer(self, item):
+        title = item.get("name") or core.format_duration(item.get("seconds", 0))
+        dlg = Gtk.MessageDialog(
+            transient_for=self, modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.NONE,
+            text=_("Delete saved timer «%s»?") % title)
+        dlg.add_button(_("Cancel"), Gtk.ResponseType.CANCEL)
+        dlg.add_button(_("Delete"), Gtk.ResponseType.OK) \
+            .get_style_context().add_class("destructive-action")
+        if dlg.run() == Gtk.ResponseType.OK:
+            self.cfg["timer"]["saved"] = [
+                t for t in self.cfg["timer"].get("saved", [])
+                if t.get("id") != item.get("id")]
+            core.save_config(self.cfg)
+            self.refresh_saved_timers()
+            self.app.build_menu()
+        dlg.destroy()
 
     def on_custom_start(self):
         hours, minutes, seconds = (s.get_value_as_int()
@@ -673,14 +1096,31 @@ class MainWindow(Gtk.ApplicationWindow):
         if error:
             message(self, _("Could not start the timer"), detail=error)
 
+    def toggle_countdown(self, item):
+        """Pause a running countdown, or resume a paused one (a pomodoro
+        phase too: the chain simply waits)."""
+        if item.get("paused"):
+            error = core.resume_countdown(item["id"])
+            if error:
+                message(self, _("Could not start the timer"), detail=error)
+        else:
+            core.pause_countdown(item["id"])
+        self.refresh_countdowns()
+
     def cancel_countdown(self, countdown_id):
         core.cancel_countdown(countdown_id)
         self.refresh_countdowns()
 
+    @staticmethod
+    def _countdown_keys(items):
+        """What a redraw depends on: ids and paused state (the tray or
+        the applet may pause a timer behind our back)."""
+        return [(c["id"], bool(c.get("paused"))) for c in items]
+
     def refresh_countdowns(self, prune=False):
         items = core.prune_countdowns() if prune else core.list_countdowns()
         items = sorted(items, key=lambda c: c.get("end", ""))
-        self._countdown_ids = [c["id"] for c in items]
+        self._countdown_ids = self._countdown_keys(items)
         for child in self.countdown_list.get_children():
             self.countdown_list.remove(child)
         for item in items:
@@ -693,7 +1133,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self._ticks += 1
         if self._ticks % 10 == 0:
             self.refresh_countdowns(prune=True)
-        elif [c["id"] for c in core.list_countdowns()] != self._countdown_ids:
+            self.refresh_pomodoro_stats()   # a work session may have ended
+        elif self._countdown_keys(core.list_countdowns()) != self._countdown_ids:
             self.refresh_countdowns()
         elif self.is_visible():
             for row in self.countdown_list.get_children():
@@ -755,9 +1196,151 @@ class MainWindow(Gtk.ApplicationWindow):
         self.count_hours.connect("toggled", self.on_cuckoo_changed)
         grid.attach(self.count_hours, 0, 7, 2, 1)
 
+        # Quiet night: silences a range of hours without touching the grid
+        # above, so switching it off brings every chosen hour back.
+        qbox = Gtk.Box(spacing=6)
+        self.quiet = Gtk.CheckButton(label="🌙 " + _("Quiet night from"))
+        self.quiet.set_active(bool(cuckoo.get("quiet")))
+        self.quiet_from = Gtk.SpinButton.new_with_range(0, 23, 1)
+        self.quiet_from.set_value(int(cuckoo.get("quiet_from", 22)))
+        self.quiet_to = Gtk.SpinButton.new_with_range(0, 23, 1)
+        self.quiet_to.set_value(int(cuckoo.get("quiet_to", 7)))
+        for spin in (self.quiet_from, self.quiet_to):
+            spin.set_wrap(True)
+            spin.connect("output", AlarmDialog._two_digits)
+            spin.connect("value-changed", self.on_cuckoo_changed)
+        self.quiet.connect("toggled", self.on_cuckoo_changed)
+        qbox.pack_start(self.quiet, False, False, 0)
+        qbox.pack_start(self.quiet_from, False, False, 0)
+        qbox.pack_start(Gtk.Label(label=_("to")), False, False, 0)
+        qbox.pack_start(self.quiet_to, False, False, 0)
+        grid.attach(qbox, 0, 8, 2, 1)
+        self._show_quiet_hours()
+
         scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
         scroll.add(grid)
         return scroll
+
+    def _show_quiet_hours(self):
+        """Dim the hour buttons silenced by the quiet night."""
+        quiet = core.quiet_hours(self.cfg["cuckoo"])
+        for spin in (self.quiet_from, self.quiet_to):
+            spin.set_sensitive(self.quiet.get_active())
+        for hour, button in enumerate(self.hour_buttons):
+            ctx = button.get_style_context()
+            if hour in quiet:
+                ctx.add_class("clockoo-dimmed")
+            else:
+                ctx.remove_class("clockoo-dimmed")
+
+    # -- stopwatch page
+
+    def _stopwatch_page(self):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                      margin=18)
+        self.sw_label = Gtk.Label()
+        box.pack_start(self.sw_label, False, False, 12)
+
+        buttons = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
+        self.sw_start = Gtk.Button()
+        self.sw_start.get_style_context().add_class("suggested-action")
+        self.sw_start.connect("clicked", lambda *_a: self.on_sw_start())
+        self.sw_lap = Gtk.Button(label="🏁 " + _("Lap"))
+        self.sw_lap.connect("clicked", lambda *_a: self.on_sw_lap())
+        self.sw_reset = Gtk.Button(label="↺ " + _("Reset"))
+        self.sw_reset.connect("clicked", lambda *_a: self.on_sw_reset())
+        for btn in (self.sw_start, self.sw_lap, self.sw_reset):
+            buttons.pack_start(btn, False, False, 0)
+        box.pack_start(buttons, False, False, 0)
+
+        scroll = Gtk.ScrolledWindow(vexpand=True,
+                                    hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self.sw_laps = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.sw_laps.get_style_context().add_class("frame")
+        placeholder = Gtk.Label(label=_("No laps yet."), margin=18)
+        placeholder.get_style_context().add_class("dim-label")
+        placeholder.show()
+        self.sw_laps.set_placeholder(placeholder)
+        scroll.add(self.sw_laps)
+        box.pack_start(scroll, True, True, 0)
+
+        # State in ~/.config/Clockoo/stopwatch.json (wall-clock times), so
+        # the stopwatch survives a restart and keeps counting meanwhile.
+        self.sw = core.load_stopwatch()
+        for index, (lap, total) in enumerate(self.sw["laps"]):
+            self._sw_lap_row(index + 1, lap, total)
+        self.sw_timeout = None
+        if self.sw["running"]:
+            self.sw_timeout = GLib.timeout_add(47, self._sw_refresh)
+        self._sw_refresh()
+        return box
+
+    @staticmethod
+    def _sw_text(seconds):
+        minutes, secs = divmod(max(0.0, seconds), 60)
+        hours, minutes = divmod(int(minutes), 60)
+        hundredths = int((secs - int(secs)) * 100)
+        if hours:
+            return "%d:%02d:%02d.%02d" % (hours, minutes, int(secs), hundredths)
+        return "%02d:%02d.%02d" % (minutes, int(secs), hundredths)
+
+    def _sw_elapsed(self):
+        if self.sw["running"]:
+            return self.sw["base"] + time.time() - self.sw["since"]
+        return self.sw["base"]
+
+    def _sw_refresh(self):
+        self.sw_label.set_markup(
+            "<span size='300%%' weight='bold' font_features='tnum'>%s</span>"
+            % self._sw_text(self._sw_elapsed()))
+        self.sw_start.set_label(("⏸ " + _("Pause")) if self.sw["running"] else
+                                ("▶ " + _("Start")))
+        self.sw_lap.set_sensitive(self.sw["running"])
+        self.sw_reset.set_sensitive(not self.sw["running"] and
+                                    self.sw["base"] > 0)
+        return True
+
+    def on_sw_start(self):
+        now = time.time()
+        if self.sw["running"]:
+            self.sw["base"] += now - self.sw["since"]
+            self.sw["running"] = False
+            if self.sw_timeout:
+                GLib.source_remove(self.sw_timeout)
+                self.sw_timeout = None
+        else:
+            self.sw["since"] = now
+            self.sw["running"] = True
+            self.sw_timeout = GLib.timeout_add(47, self._sw_refresh)
+        core.save_stopwatch(self.sw)
+        self._sw_refresh()
+
+    def _sw_lap_row(self, number, lap, total):
+        row = Gtk.Box(spacing=12, margin=6, margin_start=12, margin_end=12)
+        label_n = Gtk.Label(label="#%d" % number, xalign=0)
+        label_n.get_style_context().add_class("dim-label")
+        label_lap = Gtk.Label(xalign=0, hexpand=True)
+        label_lap.set_markup("<b>%s</b>" % self._sw_text(lap))
+        label_total = Gtk.Label(label=self._sw_text(total), xalign=1)
+        label_total.get_style_context().add_class("dim-label")
+        for widget in (label_n, label_lap, label_total):
+            row.pack_start(widget, widget is label_lap, widget is label_lap, 0)
+        self.sw_laps.insert(row, 0)          # newest lap on top
+        self.sw_laps.show_all()
+
+    def on_sw_lap(self):
+        total = self._sw_elapsed()
+        previous = self.sw["laps"][-1][1] if self.sw["laps"] else 0.0
+        self.sw["laps"].append([total - previous, total])
+        core.save_stopwatch(self.sw)
+        self._sw_lap_row(len(self.sw["laps"]), total - previous, total)
+
+    def on_sw_reset(self):
+        self.sw.update(running=False, base=0.0, since=0.0, laps=[])
+        core.save_stopwatch(self.sw)
+        for child in self.sw_laps.get_children():
+            self.sw_laps.remove(child)
+        self._sw_refresh()
 
     def on_hours_preset(self, _btn, picker):
         for hour, button in enumerate(self.hour_buttons):
@@ -771,6 +1354,10 @@ class MainWindow(Gtk.ApplicationWindow):
         cuckoo["minute"] = self.cuckoo_minute.get_value_as_int()
         cuckoo["sound"] = self.cuckoo_sound.get()
         cuckoo["count_hours"] = self.count_hours.get_active()
+        cuckoo["quiet"] = self.quiet.get_active()
+        cuckoo["quiet_from"] = self.quiet_from.get_value_as_int()
+        cuckoo["quiet_to"] = self.quiet_to.get_value_as_int()
+        self._show_quiet_hours()
         # Many toggles in a row → one single apply().
         if self._cuckoo_timeout:
             GLib.source_remove(self._cuckoo_timeout)
@@ -810,6 +1397,17 @@ class ClockooApp(Gtk.Application):
         Gtk.Application.do_startup(self)
         self.cfg = core.load_config()
         set_lang(self.cfg.get("ui_lang"))
+        css = Gtk.CssProvider()
+        css.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), css,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        # Light ↔ dark theme switch: swap wood and brass icons live.
+        settings = Gtk.Settings.get_default()
+        if settings:
+            for prop in ("gtk-theme-name", "gtk-application-prefer-dark-theme"):
+                settings.connect("notify::" + prop,
+                                 lambda *_a: GLib.idle_add(self.update_icons))
         core.apply(self.cfg)          # make systemd match the config
         self._make_tray()
         if self.tray:
@@ -825,10 +1423,45 @@ class ClockooApp(Gtk.Application):
     def show_window(self, page=None):
         if not self.window:
             self.window = MainWindow(self)
+        if not self.window.is_visible():
+            # Open on the monitor under the mouse, never across two screens.
+            center_on_pointer_monitor(self.window)
             self.window.show_all()
         if page:
             self.window.stack.set_visible_child_name(page)
         self.window.present()
+
+    def update_icons(self):
+        """Apply the icon style (or the new theme) to window and tray."""
+        name = icon_name(self.cfg)
+        if self.window:
+            self.window.set_icon_name(name)
+        if self.tray is not None:
+            if XApp is not None and isinstance(self.tray, XApp.StatusIcon):
+                self.tray.set_icon_name(name)
+            else:
+                self.tray.set_from_icon_name(name)
+        return False
+
+    def start_saved(self, item):
+        """Tray shortcut for a saved timer."""
+        tcfg = self.cfg["timer"]
+        _item, error = core.start_countdown(
+            int(item.get("seconds", 0)), item.get("name", ""),
+            item.get("sound") or tcfg.get("sound"), item.get("text", ""),
+            item.get("voice", ""), tcfg.get("repeat", 3))
+        if error:
+            message(self.window, _("Could not start the timer"), detail=error)
+        elif self.window:
+            self.window.refresh_countdowns()
+
+    def start_pomodoro(self):
+        """Tray shortcut: a pomodoro with the saved settings."""
+        _item, error = core.start_pomodoro(self.cfg)
+        if error:
+            message(self.window, _("Could not start the timer"), detail=error)
+        elif self.window:
+            self.window.refresh_countdowns()
 
     def quick_countdown(self, minutes):
         """Tray shortcut: start a countdown with the last timer choices."""
@@ -864,14 +1497,19 @@ class ClockooApp(Gtk.Application):
         if XApp is not None:
             self.tray = XApp.StatusIcon()
             self.tray.set_name(core.APP_ID)
-            self.tray.set_icon_name(icon_name())
+            self.tray.set_icon_name(icon_name(self.cfg))
             self.tray.connect("activate", lambda *_a: self.toggle_window())
         else:
             try:
-                self.tray = Gtk.StatusIcon.new_from_icon_name(icon_name())
+                self.tray = Gtk.StatusIcon.new_from_icon_name(
+                    icon_name(self.cfg))
                 self.tray.connect("activate", lambda *_a: self.toggle_window())
             except (AttributeError, TypeError):
                 self.tray = None
+        self._build_menu()
+
+    def build_menu(self):
+        """Public: rebuild the tray menu (e.g. after saving a timer)."""
         self._build_menu()
 
     def _build_menu(self):
@@ -893,6 +1531,19 @@ class ClockooApp(Gtk.Application):
             item.connect("activate",
                          lambda _i, m=minutes: self.quick_countdown(m))
             menu.append(item)
+        for item in self.cfg["timer"].get("saved", []):
+            label = core.format_duration(item.get("seconds", 0))
+            if item.get("name"):
+                label += " — " + item["name"]
+            entry = Gtk.MenuItem(label="💾 " + label)
+            entry.connect("activate", lambda _i, t=item: self.start_saved(t))
+            menu.append(entry)
+        pomodoro = Gtk.MenuItem(label="🍅 " + _("Start pomodoro"))
+        pomodoro.connect("activate", lambda *_a: self.start_pomodoro())
+        menu.append(pomodoro)
+        self.pomo_stats_item = Gtk.MenuItem(label="")
+        self.pomo_stats_item.set_sensitive(False)
+        menu.append(self.pomo_stats_item)
         custom = Gtk.MenuItem(label="⏳ " + _("Custom…"))
         custom.connect("activate", lambda *_a: self.show_window("timer"))
         menu.append(custom)
@@ -931,6 +1582,9 @@ class ClockooApp(Gtk.Application):
             text = _("No alarm set")
         self.next_item.set_label(text)
         self.tray.set_tooltip_text("%s\n%s" % (core.APP_NAME, text))
+        stats = core.pomodoro_stats()
+        self.pomo_stats_item.set_label("    %s %d 🍅 · %s %d 🍅" % (
+            _("Today"), stats["today"], _("This week"), stats["week"]))
         self.cuckoo_item.handler_block(self.cuckoo_handler)
         self.cuckoo_item.set_active(bool(self.cfg["cuckoo"].get("enabled")))
         self.cuckoo_item.handler_unblock(self.cuckoo_handler)

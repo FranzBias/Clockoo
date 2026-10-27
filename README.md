@@ -1,6 +1,6 @@
 <a id="top"></a>
 
-# 🐦⏰ Clockoo
+# 🕰️ Clockoo
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 ![Made with love](https://img.shields.io/badge/made%20with-%E2%9D%A4%EF%B8%8F%20by%20Francesco-blueviolet)
@@ -8,13 +8,13 @@
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
 ![GTK](https://img.shields.io/badge/GUI-GTK%203-4A86CF)
 ![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)
-![Version](https://img.shields.io/badge/version-0.2.0-blue)
+![Version](https://img.shields.io/badge/version-0.7.0-blue)
 
 [🇬🇧 English](#english) · [🇮🇹 Italiano](#italiano) · [🇩🇪 Deutsch](#deutsch) · [🇪🇸 Español](#espanol) · [🇫🇷 Français](#francais) · [🇳🇱 Nederlands](#nederlands) · [🇷🇺 Русский](#russkiy) · [🇸🇦 العربية](#arabic) · [🇨🇳 中文](#zhongwen) · [🇯🇵 日本語](#nihongo) · [🙏 Credits](#credits)
 
 <p align="center">
   <img src="screenshots/alarms.jpg" alt="Clockoo — Alarms tab" width="48%">
-  <img src="screenshots/edit-alarm.jpg" alt="Clockoo — editing an alarm with a text read aloud" width="40%">
+  <img src="screenshots/edit-alarm.jpg" alt="Clockoo — editing an alarm with a spoken text" width="40%">
 </p>
 <p align="center">
   <img src="screenshots/timer.jpg" alt="Clockoo — Timer tab with a running timer" width="45%">
@@ -30,17 +30,20 @@
 
 ## 🇬🇧 English
 
-**Clockoo** is an hourly cuckoo, a set of alarms that can read a text aloud, and a countdown timer for the Linux desktop — with a small window and a tray icon.
+**Clockoo** is an hourly cuckoo, alarms that can speak a text, timers, a pomodoro and a stopwatch for the Linux desktop — with a small window and a tray icon.
 
 ### ✨ Features
 
-- **Hourly cuckoo** — pick the hours and the minute; optionally it calls **as many times as the hour**, like a real cuckoo clock.
-- **Named alarms** — on chosen weekdays or just once, each with its own sound, repeat count and an optional **text read aloud**.
-- **⏳ Timer** — 1, 3, 5, 10, 15, 30 minutes or any h:m:s, with a live countdown and *Cancel*; also from the tray menu.
+- **Hourly cuckoo** — pick the hours and the minute; optionally it calls **as many times as the hour**, like a real cuckoo clock. A **quiet night** silences the hours you choose.
+- **Named alarms** — on chosen weekdays or just once, each with its own sound, repeat count, snooze and an optional **spoken text**; **crescendo** (from soft to full volume) and a **heads-up** some minutes before.
+- **⏳ Timer** — 1 to 30 minutes or any h:m:s, **saved timers** you can sort, **pause / resume**; also from the tray menu.
+- **🍅 Pomodoro** — work and breaks in a chain, with statistics for today, this week and the last 7 days.
+- **⏱ Stopwatch** — with laps; it keeps counting across restarts.
 - **Stop / Snooze** on every notification.
-- **Rings with the window closed** — everything is a systemd *user* timer, so it keeps ringing even if the window, the tray or Cinnamon restarts.
-- **13 CC0 sounds included**, or choose any folder of your own sounds.
+- **Rings with the window closed, and after suspend** — everything is a systemd *user* timer: it rings even if the window, the tray or Cinnamon restarts; what falls during suspend rings at wake-up, and an alarm missed while the computer was off rings at the next login.
+- **13 CC0 sounds included**, or any folder of your own sounds.
 - **Natural offline voices** with piper (optional), otherwise `spd-say`.
+- **Mantel-clock icon** — wood on light themes, brass on dark ones.
 - Interface in English, Italian and German.
 
 ### 🚀 Install
@@ -77,17 +80,20 @@ MIT — see [LICENSE](LICENSE). Voices and sounds keep their own licences: see [
 
 ## 🇮🇹 Italiano
 
-**Clockoo** è un cucù orario, delle sveglie che sanno leggere un testo ad alta voce e un timer per il desktop Linux — con una piccola finestra e un'icona nel tray.
+**Clockoo** è un cucù orario, sveglie che sanno leggere un testo, timer, un pomodoro e un cronometro per il desktop Linux — con una piccola finestra e un'icona nel tray.
 
 ### ✨ Funzioni
 
-- **Cucù orario** — scegli le ore e il minuto; se vuoi chiama **tante volte quante sono le ore**, come un vero orologio a cucù.
-- **Sveglie con nome** — nei giorni scelti o una volta sola, ognuna col suo suono, le sue ripetizioni e un **testo letto ad alta voce** facoltativo.
-- **⏳ Timer** — 1, 3, 5, 10, 15, 30 minuti o qualsiasi h:m:s, con il conto alla rovescia dal vivo e *Annulla*; anche dal menu del tray.
+- **Cucù orario** — scegli le ore e il minuto; se vuoi chiama **tante volte quante sono le ore**, come un vero orologio a cucù. La **notte silenziosa** zittisce le ore che scegli.
+- **Sveglie con nome** — nei giorni scelti o una volta sola, ognuna col suo suono, le sue ripetizioni, il suo posticipo e un **testo letto** facoltativo; **crescendo** (da piano a pieno volume) e un **avviso** qualche minuto prima.
+- **⏳ Timer** — da 1 a 30 minuti o qualsiasi h:m:s, **timer salvati** da ordinare, **pausa / ripresa**; anche dal menu del tray.
+- **🍅 Pomodoro** — lavoro e pause a catena, con le statistiche di oggi, della settimana e degli ultimi 7 giorni.
+- **⏱ Cronometro** — con i giri; continua a contare anche dopo un riavvio.
 - **Stop / Posticipa** su ogni notifica.
-- **Suona a finestra chiusa** — tutto è un timer *utente* di systemd: suona anche se la finestra, il tray o Cinnamon si riavviano.
+- **Suona a finestra chiusa, e dopo la sospensione** — tutto è un timer *utente* di systemd: suona anche se la finestra, il tray o Cinnamon si riavviano; ciò che cade durante la sospensione suona al risveglio, e una sveglia persa a computer spento suona all'accesso successivo.
 - **13 suoni CC0 inclusi**, oppure una cartella qualsiasi di suoni tuoi.
 - **Voci naturali offline** con piper (facoltativo), altrimenti `spd-say`.
+- **Icona a orologio da mensola** — legno sui temi chiari, ottone su quelli scuri.
 - Interfaccia in inglese, italiano e tedesco.
 
 ### 🚀 Installazione
@@ -124,17 +130,20 @@ MIT — vedi [LICENSE](LICENSE). Voci e suoni hanno le loro licenze: vedi [Credi
 
 ## 🇩🇪 Deutsch
 
-**Clockoo** ist ein stündlicher Kuckuck, Wecker, die einen Text vorlesen können, und ein Countdown-Timer für den Linux-Desktop — mit einem kleinen Fenster und einem Tray-Symbol.
+**Clockoo** ist ein stündlicher Kuckuck, Wecker, die einen Text sprechen können, Timer, ein Pomodoro und eine Stoppuhr für den Linux-Desktop — mit einem kleinen Fenster und einem Tray-Symbol.
 
 ### ✨ Funktionen
 
-- **Stündlicher Kuckuck** — Stunden und Minute wählen; auf Wunsch ruft er **so oft, wie es Uhr ist**, wie eine echte Kuckucksuhr.
-- **Wecker mit Namen** — an gewählten Wochentagen oder einmalig, jeder mit eigenem Klang, Wiederholungen und optionalem **vorgelesenem Text**.
-- **⏳ Timer** — 1, 3, 5, 10, 15, 30 Minuten oder beliebige h:m:s, mit Live-Countdown und *Abbrechen*; auch über das Tray-Menü.
+- **Stündlicher Kuckuck** — Stunden und Minute wählen; auf Wunsch ruft er **so oft, wie es Uhr ist**, wie eine echte Kuckucksuhr. Die **ruhige Nacht** schaltet die gewählten Stunden stumm.
+- **Wecker mit Namen** — an gewählten Wochentagen oder nur einmal, jeder mit eigenem Klang, eigener Wiederholung, eigenem Schlummern und optional einem **gesprochenen Text**; **Crescendo** (von leise bis voll) und ein **Hinweis** einige Minuten vorher.
+- **⏳ Timer** — 1 bis 30 Minuten oder beliebige h:m:s, **gespeicherte Timer** zum Sortieren, **Pause / Fortsetzen**; auch über das Tray-Menü.
+- **🍅 Pomodoro** — Arbeit und Pausen in einer Kette, mit Statistik für heute, diese Woche und die letzten 7 Tage.
+- **⏱ Stoppuhr** — mit Runden; sie zählt auch nach einem Neustart weiter.
 - **Stopp / Schlummern** in jeder Benachrichtigung.
-- **Klingelt bei geschlossenem Fenster** — alles sind systemd-*Benutzer*-Timer: Er klingelt auch, wenn Fenster, Tray oder Cinnamon neu starten.
+- **Klingelt bei geschlossenem Fenster und nach dem Ruhezustand** — alles ist ein systemd-*Benutzer*-Timer: er klingelt auch, wenn Fenster, Tray oder Cinnamon neu starten; was in den Ruhezustand fällt, klingelt beim Aufwachen, und ein Wecker, der bei ausgeschaltetem Rechner verpasst wurde, klingelt bei der nächsten Anmeldung.
 - **13 CC0-Klänge enthalten**, oder ein beliebiger eigener Klangordner.
 - **Natürliche Offline-Stimmen** mit piper (optional), sonst `spd-say`.
+- **Kaminuhr-Symbol** — Holz bei hellen Themen, Messing bei dunklen.
 - Oberfläche auf Englisch, Italienisch und Deutsch.
 
 ### 🚀 Installation
@@ -171,17 +180,20 @@ MIT — siehe [LICENSE](LICENSE). Stimmen und Klänge behalten ihre eigenen Lize
 
 ## 🇪🇸 Español
 
-**Clockoo** es un cucú horario, alarmas que pueden leer un texto en voz alta y un temporizador para el escritorio Linux — con una pequeña ventana y un icono en la bandeja.
+**Clockoo** es un cucú horario, alarmas que pueden leer un texto, temporizadores, un pomodoro y un cronómetro para el escritorio Linux — con una pequeña ventana y un icono en la bandeja.
 
 ### ✨ Funciones
 
-- **Cucú horario** — elige las horas y el minuto; si quieres, canta **tantas veces como la hora**, como un auténtico reloj de cucú.
-- **Alarmas con nombre** — en los días elegidos o una sola vez, cada una con su sonido, sus repeticiones y un **texto leído en voz alta** opcional.
-- **⏳ Temporizador** — 1, 3, 5, 10, 15, 30 minutos o cualquier h:m:s, con cuenta atrás en vivo y *Cancelar*; también desde el menú de la bandeja.
-- **Detener / Posponer** en cada notificación.
-- **Suena con la ventana cerrada** — todo es un temporizador de *usuario* de systemd: suena aunque se reinicien la ventana, la bandeja o Cinnamon.
-- **13 sonidos CC0 incluidos**, o cualquier carpeta con tus propios sonidos.
+- **Cucú horario** — elige las horas y el minuto; si quieres, llama **tantas veces como la hora**, como un auténtico reloj de cuco. La **noche silenciosa** calla las horas que elijas.
+- **Alarmas con nombre** — en los días elegidos o una sola vez, cada una con su sonido, sus repeticiones, su posponer y un **texto leído** opcional; **crescendo** (de suave a volumen completo) y un **aviso** unos minutos antes.
+- **⏳ Temporizador** — de 1 a 30 minutos o cualquier h:m:s, **temporizadores guardados** que se pueden ordenar, **pausa / reanudar**; también desde el menú de la bandeja.
+- **🍅 Pomodoro** — trabajo y pausas en cadena, con estadísticas de hoy, de la semana y de los últimos 7 días.
+- **⏱ Cronómetro** — con vueltas; sigue contando tras un reinicio.
+- **Parar / Posponer** en cada notificación.
+- **Suena con la ventana cerrada, y después de la suspensión** — todo es un temporizador de *usuario* de systemd: suena aunque la ventana, la bandeja o Cinnamon se reinicien; lo que cae durante la suspensión suena al despertar, y una alarma perdida con el ordenador apagado suena en el siguiente inicio de sesión.
+- **13 sonidos CC0 incluidos**, o cualquier carpeta de sonidos propios.
 - **Voces naturales sin conexión** con piper (opcional); si no, `spd-say`.
+- **Icono de reloj de chimenea** — madera en temas claros, latón en los oscuros.
 - Interfaz en inglés, italiano y alemán.
 
 ### 🚀 Instalación
@@ -218,17 +230,20 @@ MIT — ver [LICENSE](LICENSE). Las voces y los sonidos conservan sus propias li
 
 ## 🇫🇷 Français
 
-**Clockoo**, c'est un coucou horaire, des alarmes qui savent lire un texte à voix haute et un minuteur pour le bureau Linux — avec une petite fenêtre et une icône dans la zone de notification.
+**Clockoo** est un coucou horaire, des réveils qui savent lire un texte, des minuteurs, un pomodoro et un chronomètre pour le bureau Linux — avec une petite fenêtre et une icône dans la zone de notification.
 
 ### ✨ Fonctions
 
-- **Coucou horaire** — choisissez les heures et la minute ; s'il le faut, il chante **autant de fois que l'heure**, comme une vraie horloge à coucou.
-- **Alarmes nommées** — les jours choisis ou une seule fois, chacune avec son son, ses répétitions et un **texte lu à voix haute** facultatif.
-- **⏳ Minuteur** — 1, 3, 5, 10, 15, 30 minutes ou n'importe quelle durée h:m:s, avec compte à rebours en direct et *Annuler* ; aussi depuis le menu de l'icône.
-- **Arrêter / Répéter plus tard** dans chaque notification.
-- **Sonne fenêtre fermée** — tout passe par des minuteurs *utilisateur* systemd : ça sonne même si la fenêtre, l'icône ou Cinnamon redémarrent.
-- **13 sons CC0 inclus**, ou n'importe quel dossier de vos propres sons.
+- **Coucou horaire** — choisissez les heures et la minute ; s'il le faut, il chante **autant de fois que l'heure**, comme une vraie pendule à coucou. La **nuit calme** fait taire les heures choisies.
+- **Réveils nommés** — certains jours ou une seule fois, chacun avec son son, ses répétitions, son report et un **texte lu** facultatif ; **crescendo** (du doux au plein volume) et un **rappel** quelques minutes avant.
+- **⏳ Minuteur** — de 1 à 30 minutes ou n'importe quel h:m:s, **minuteurs enregistrés** à trier, **pause / reprise** ; aussi depuis le menu de l'icône.
+- **🍅 Pomodoro** — travail et pauses en chaîne, avec les statistiques du jour, de la semaine et des 7 derniers jours.
+- **⏱ Chronomètre** — avec tours ; il continue de compter après un redémarrage.
+- **Arrêter / Reporter** sur chaque notification.
+- **Sonne fenêtre fermée, et après la mise en veille** — tout est un minuteur *utilisateur* de systemd : il sonne même si la fenêtre, l'icône ou Cinnamon redémarrent ; ce qui tombe pendant la veille sonne au réveil, et un réveil manqué ordinateur éteint sonne à la connexion suivante.
+- **13 sons CC0 inclus**, ou n'importe quel dossier de sons à vous.
 - **Voix naturelles hors ligne** avec piper (facultatif), sinon `spd-say`.
+- **Icône de pendule de cheminée** — bois sur les thèmes clairs, laiton sur les sombres.
 - Interface en anglais, italien et allemand.
 
 ### 🚀 Installation
@@ -265,17 +280,20 @@ MIT — voir [LICENSE](LICENSE). Les voix et les sons gardent leurs propres lice
 
 ## 🇳🇱 Nederlands
 
-**Clockoo** is een koekoek op het hele uur, wekkers die een tekst kunnen voorlezen en een timer voor het Linux-bureaublad — met een klein venster en een pictogram in het systeemvak.
+**Clockoo** is een koekoek op het hele uur, wekkers die een tekst kunnen voorlezen, timers, een pomodoro en een stopwatch voor de Linux-desktop — met een klein venster en een tray-pictogram.
 
 ### ✨ Functies
 
-- **Koekoek op het hele uur** — kies de uren en de minuut; desgewenst roept hij **zo vaak als het uur slaat**, zoals een echte koekoeksklok.
-- **Wekkers met een naam** — op gekozen weekdagen of één keer, elk met eigen geluid, herhalingen en een optionele **voorgelezen tekst**.
-- **⏳ Timer** — 1, 3, 5, 10, 15, 30 minuten of elke u:m:s, met live aftellen en *Annuleren*; ook via het menu van het systeemvak.
-- **Stoppen / Sluimeren** in elke melding.
-- **Gaat af met het venster dicht** — alles is een systemd-*gebruikers*timer: hij gaat ook af als het venster, het systeemvak of Cinnamon herstart.
-- **13 CC0-geluiden inbegrepen**, of elke map met je eigen geluiden.
+- **Koekoek op het hele uur** — kies de uren en de minuut; desgewenst roept hij **zo vaak als het uur**, als een echte koekoeksklok. De **stille nacht** maakt de gekozen uren stil.
+- **Wekkers met een naam** — op gekozen weekdagen of één keer, elk met eigen geluid, herhaling, sluimertijd en een optionele **voorgelezen tekst**; **crescendo** (van zacht naar vol volume) en een **vooraankondiging** enkele minuten eerder.
+- **⏳ Timer** — 1 tot 30 minuten of elke u:m:s, **opgeslagen timers** om te sorteren, **pauzeren / hervatten**; ook via het tray-menu.
+- **🍅 Pomodoro** — werk en pauzes in een keten, met statistieken van vandaag, deze week en de laatste 7 dagen.
+- **⏱ Stopwatch** — met rondetijden; telt door na een herstart.
+- **Stop / Sluimer** in elke melding.
+- **Gaat af met het venster dicht, en na de slaapstand** — alles is een systemd-*gebruikers*timer: hij gaat af ook als het venster, de tray of Cinnamon herstart; wat tijdens de slaapstand valt, gaat af bij het ontwaken, en een wekker die gemist werd terwijl de computer uit stond, gaat af bij de volgende aanmelding.
+- **13 CC0-geluiden inbegrepen**, of een eigen map met geluiden.
 - **Natuurlijke offline stemmen** met piper (optioneel), anders `spd-say`.
+- **Pictogram van een schoorsteenklok** — hout bij lichte thema's, messing bij donkere.
 - Interface in het Engels, Italiaans en Duits.
 
 ### 🚀 Installatie
@@ -312,17 +330,20 @@ MIT — zie [LICENSE](LICENSE). Stemmen en geluiden houden hun eigen licenties: 
 
 ## 🇷🇺 Русский
 
-**Clockoo** — это кукушка каждый час, будильники, которые умеют читать текст вслух, и таймер для рабочего стола Linux — с небольшим окном и значком в трее.
+**Clockoo** — это ежечасная кукушка, будильники, которые умеют зачитывать текст, таймеры, помодоро и секундомер для рабочего стола Linux — с маленьким окном и значком в трее.
 
 ### ✨ Возможности
 
-- **Кукушка каждый час** — выберите часы и минуту; по желанию она кукует **столько раз, сколько сейчас часов**, как настоящие часы с кукушкой.
-- **Будильники с названием** — в выбранные дни недели или один раз, у каждого свой звук, число повторов и необязательный **текст, читаемый вслух**.
-- **⏳ Таймер** — 1, 3, 5, 10, 15, 30 минут или любое ч:м:с, с обратным отсчётом и кнопкой *Отмена*; также из меню в трее.
+- **Ежечасная кукушка** — выберите часы и минуту; по желанию она кукует **столько раз, сколько часов**, как настоящие часы с кукушкой. **Тихая ночь** отключает выбранные часы.
+- **Именованные будильники** — в выбранные дни недели или один раз, у каждого свой звук, число повторов, отсрочка и необязательный **зачитываемый текст**; **крещендо** (от тихого до полной громкости) и **напоминание** за несколько минут.
+- **⏳ Таймер** — от 1 до 30 минут или любое ч:м:с, **сохранённые таймеры** с сортировкой, **пауза / продолжение**; также из меню в трее.
+- **🍅 Помодоро** — работа и перерывы цепочкой, со статистикой за сегодня, за неделю и за последние 7 дней.
+- **⏱ Секундомер** — с кругами; продолжает считать после перезапуска.
 - **Стоп / Отложить** в каждом уведомлении.
-- **Звонит при закрытом окне** — всё работает через *пользовательские* таймеры systemd: звонок прозвучит, даже если окно, трей или Cinnamon перезапустятся.
-- **13 звуков CC0 в комплекте** или любая папка с вашими звуками.
-- **Естественные офлайн-голоса** через piper (необязательно), иначе `spd-say`.
+- **Звонит при закрытом окне и после сна** — всё это *пользовательские* таймеры systemd: звонят, даже если окно, трей или Cinnamon перезапускаются; то, что пришлось на сон, звонит при пробуждении, а будильник, пропущенный при выключенном компьютере, звонит при следующем входе.
+- **13 звуков CC0 в комплекте** или любая своя папка со звуками.
+- **Естественные офлайн-голоса** через piper (по желанию), иначе `spd-say`.
+- **Значок каминных часов** — дерево в светлых темах, латунь в тёмных.
 - Интерфейс на английском, итальянском и немецком.
 
 ### 🚀 Установка
@@ -359,19 +380,20 @@ MIT — см. [LICENSE](LICENSE). У голосов и звуков свои л�
 
 ## 🇸🇦 العربية
 
-<div dir="rtl">
-
-**Clockoo** هو وقواق يصيح كل ساعة، ومنبّهات تستطيع قراءة نص بصوت عالٍ، ومؤقّت تنازلي لسطح مكتب لينكس — مع نافذة صغيرة وأيقونة في شريط النظام.
+**Clockoo** هو وقواق كل ساعة، ومنبّهات تستطيع قراءة نص، ومؤقّتات، وبومودورو، وساعة إيقاف لسطح مكتب لينكس — مع نافذة صغيرة وأيقونة في شريط النظام.
 
 ### ✨ الميزات
 
-- **وقواق كل ساعة** — اختر الساعات والدقيقة؛ ويمكنه أن يصيح **بعدد الساعة**، مثل ساعة الوقواق الحقيقية.
-- **منبّهات بأسماء** — في أيام الأسبوع التي تختارها أو مرة واحدة، لكلّ منها صوتها وعدد تكراراتها و**نص يُقرأ بصوت عالٍ** اختياري.
-- **⏳ مؤقّت** — 1 أو 3 أو 5 أو 10 أو 15 أو 30 دقيقة أو أي مدة س:د:ث، مع عدّ تنازلي مباشر وزر *إلغاء*؛ ومن قائمة شريط النظام أيضاً.
+- **وقواق كل ساعة** — اختر الساعات والدقيقة؛ ويمكنه أن ينادي **بعدد الساعات**، مثل ساعة وقواق حقيقية. و**الليل الهادئ** يُسكت الساعات التي تختارها.
+- **منبّهات بأسماء** — في أيام مختارة أو مرة واحدة، لكلٍّ منها صوته وعدد تكراره ومدة تأجيله و**نص مقروء** اختياري؛ مع **تصاعد** الصوت (من خافت إلى كامل) و**تنبيه مسبق** قبل بضع دقائق.
+- **⏳ مؤقّت** — من 1 إلى 30 دقيقة أو أي س:د:ث، و**مؤقّتات محفوظة** قابلة للترتيب، و**إيقاف مؤقت / استئناف**؛ ومن قائمة شريط النظام أيضًا.
+- **🍅 بومودورو** — عمل واستراحات متتالية، مع إحصاءات اليوم والأسبوع وآخر 7 أيام.
+- **⏱ ساعة إيقاف** — مع اللفّات؛ تواصل العدّ بعد إعادة التشغيل.
 - **إيقاف / تأجيل** في كل إشعار.
-- **يرنّ والنافذة مغلقة** — كل شيء مؤقّت *مستخدم* في systemd، فيرنّ حتى لو أُعيد تشغيل النافذة أو شريط النظام أو Cinnamon.
-- **13 صوتاً بترخيص CC0 مضمّنة**، أو أي مجلد لأصواتك الخاصة.
+- **يرنّ والنافذة مغلقة، وبعد السكون** — كل شيء مؤقّت *مستخدم* في systemd: يرنّ حتى لو أُعيد تشغيل النافذة أو شريط النظام أو Cinnamon؛ وما يقع أثناء السكون يرنّ عند الاستيقاظ، والمنبّه الفائت والحاسوب مطفأ يرنّ عند تسجيل الدخول التالي.
+- **13 صوتًا بترخيص CC0 مضمّنة**، أو أي مجلد أصوات خاص بك.
 - **أصوات طبيعية دون اتصال** عبر piper (اختياري)، وإلا `spd-say`.
+- **أيقونة ساعة رفّ** — خشب في السمات الفاتحة، ونحاس في الداكنة.
 - الواجهة بالإنجليزية والإيطالية والألمانية.
 
 ### 🚀 التثبيت
@@ -418,18 +440,21 @@ MIT — انظر [LICENSE](LICENSE). للأصوات والمؤثرات الصو�
 
 ## 🇨🇳 中文
 
-**Clockoo** 是一款适用于 Linux 桌面的整点布谷鸟报时、能朗读文字的闹钟和倒计时器——带有一个小窗口和托盘图标。
+**Clockoo** 是一款 Linux 桌面上的整点布谷钟、会朗读文字的闹钟、计时器、番茄钟和秒表——带一个小窗口和托盘图标。
 
 ### ✨ 功能
 
-- **整点布谷鸟** —— 选择小时和分钟；还可以像真正的布谷鸟钟一样，**几点就叫几声**。
-- **带名称的闹钟** —— 在选定的星期几或仅一次，每个闹钟都有自己的声音、重复次数和可选的**朗读文字**。
-- **⏳ 计时器** —— 1、3、5、10、15、30 分钟或任意时:分:秒，实时倒计时并可*取消*；也可从托盘菜单启动。
+- **整点布谷** —— 选择小时和分钟；还可以像真正的布谷钟一样**按钟点数报时**。**静夜模式**让你选定的时段保持安静。
+- **带名称的闹钟** —— 在选定的星期几或仅一次，每个闹钟都有自己的声音、重复次数、贪睡时间和可选的**朗读文字**；支持**渐强**（从轻到满音量）以及提前几分钟的**预先提醒**。
+- **⏳ 计时器** —— 1 到 30 分钟或任意时:分:秒，**可保存并排序的计时器**，**暂停 / 继续**；也可从托盘菜单启动。
+- **🍅 番茄钟** —— 工作与休息连续进行，并统计今天、本周和最近 7 天。
+- **⏱ 秒表** —— 支持计圈；重启后继续计时。
 - 每条通知都有**停止 / 稍后提醒**。
-- **关闭窗口也会响** —— 一切都是 systemd *用户*定时器：即使窗口、托盘或 Cinnamon 重启，照样会响。
-- **内置 13 个 CC0 声音**，也可以选择任意存放自己声音的文件夹。
-- 使用 piper 的**自然离线语音**（可选），否则使用 `spd-say`。
-- 界面提供英语、意大利语和德语。
+- **关闭窗口也会响，休眠后也会响** —— 一切都是 systemd *用户*计时器：即使窗口、托盘或 Cinnamon 重启也会响；休眠期间到点的会在唤醒时响，关机时错过的闹钟会在下次登录时响。
+- **内置 13 个 CC0 音效**，也可使用你自己的任意声音文件夹。
+- **离线自然语音**：piper（可选），否则使用 `spd-say`。
+- **座钟图标** —— 浅色主题为木质，深色主题为黄铜。
+- 界面支持英语、意大利语和德语。
 
 ### 🚀 安装
 
@@ -465,17 +490,20 @@ MIT —— 见 [LICENSE](LICENSE)。语音和声音保留各自的许可证：�
 
 ## 🇯🇵 日本語
 
-**Clockoo** は、Linux デスクトップ向けの時報カッコウ、テキストを読み上げるアラーム、カウントダウンタイマーです。小さなウィンドウとトレイアイコン付き。
+**Clockoo** は、Linux デスクトップ向けの毎時のカッコウ、テキストを読み上げるアラーム、タイマー、ポモドーロ、ストップウォッチです——小さなウィンドウとトレイアイコン付き。
 
 ### ✨ 機能
 
-- **時報カッコウ** —— 時と分を選べます。本物のカッコウ時計のように**時刻の数だけ鳴く**こともできます。
-- **名前付きアラーム** —— 選んだ曜日または一度だけ。それぞれに音、繰り返し回数、任意の**読み上げテキスト**を設定できます。
-- **⏳ タイマー** —— 1・3・5・10・15・30 分、または任意の時:分:秒。ライブのカウントダウンと*キャンセル*付き。トレイのメニューからも使えます。
+- **毎時のカッコウ** —— 時間と分を選べます。本物の鳩時計のように**時刻の数だけ鳴く**こともできます。**静かな夜**で選んだ時間帯を消音します。
+- **名前付きアラーム** —— 選んだ曜日または一度だけ。それぞれに音、繰り返し回数、スヌーズ、任意の**読み上げテキスト**。**クレッシェンド**（小さな音から最大音量へ）と、数分前の**予告**も。
+- **⏳ タイマー** —— 1〜30 分または任意の時:分:秒、並べ替えできる**保存タイマー**、**一時停止 / 再開**。トレイメニューからも使えます。
+- **🍅 ポモドーロ** —— 作業と休憩を連続で。今日・今週・直近 7 日間の統計付き。
+- **⏱ ストップウォッチ** —— ラップ付き。再起動後も計測を続けます。
 - すべての通知に**停止 / スヌーズ**。
-- **ウィンドウを閉じても鳴る** —— すべて systemd の*ユーザー*タイマーなので、ウィンドウやトレイ、Cinnamon が再起動しても鳴ります。
-- **CC0 のサウンド 13 種類を同梱**。自分のサウンドのフォルダーも選べます。
-- piper による**自然なオフライン音声**（任意）。なければ `spd-say`。
+- **ウィンドウを閉じても、スリープ後も鳴る** —— すべて systemd の*ユーザー*タイマーです。ウィンドウ、トレイ、Cinnamon が再起動しても鳴り、スリープ中に来た時刻は復帰時に鳴り、電源オフ中に逃したアラームは次回ログイン時に鳴ります。
+- **CC0 サウンド 13 種を同梱**、または自分のサウンドフォルダーも使えます。
+- **自然なオフライン音声**は piper（任意）、なければ `spd-say`。
+- **置き時計のアイコン** —— 明るいテーマでは木製、暗いテーマでは真鍮。
 - インターフェースは英語・イタリア語・ドイツ語。
 
 ### 🚀 インストール

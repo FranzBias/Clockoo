@@ -33,7 +33,7 @@ AUTOSTART="$HOME/.config/autostart"
 ICONS="$HOME/.local/share/icons/hicolor/scalable/apps"
 
 mkdir -p "$DEST" "$APPS" "$AUTOSTART" "$ICONS"
-for f in clockoo_core.py clockoo_i18n.py clockoo_ring.py clockoo_gui.py clockoo.svg; do
+for f in clockoo_core.py clockoo_i18n.py clockoo_ring.py clockoo_gui.py clockoo.svg clockoo-dark.svg; do
     install -m 0644 "$SRC/$f" "$DEST/$f"
 done
 chmod 0755 "$DEST/clockoo_gui.py" "$DEST/clockoo_ring.py"
@@ -41,6 +41,7 @@ chmod 0755 "$DEST/clockoo_gui.py" "$DEST/clockoo_ring.py"
 mkdir -p "$DEST/sounds"
 install -m 0644 "$SRC"/sounds/*.ogg "$SRC/sounds/CREDITS.md" "$DEST/sounds/"
 install -m 0644 "$SRC/clockoo.svg" "$ICONS/clockoo.svg"
+install -m 0644 "$SRC/clockoo-dark.svg" "$ICONS/clockoo-dark.svg"
 gtk-update-icon-cache -q -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 
 cat > "$APPS/clockoo.desktop" <<EOF
