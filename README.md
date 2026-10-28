@@ -17,10 +17,11 @@
   <img src="screenshots/edit-alarm.jpg" alt="Clockoo — editing an alarm with a spoken text" width="40%">
 </p>
 <p align="center">
-  <img src="screenshots/timer.jpg" alt="Clockoo — Timer tab with a running timer" width="45%">
+  <img src="screenshots/timer.jpg" alt="Clockoo — Timer tab: saved timers, pomodoro and its statistics" width="45%">
   <img src="screenshots/cuckoo.jpg" alt="Clockoo — Cuckoo tab" width="45%">
 </p>
 <p align="center">
+  <img src="screenshots/stopwatch.jpg" alt="Clockoo — Stopwatch tab with laps" width="45%">
   <img src="screenshots/settings.jpg" alt="Clockoo — interface language and sounds folder" width="30%">
 </p>
 

@@ -591,9 +591,10 @@ class SavedTimerRow(Gtk.ListBoxRow):
             box.pack_start(btn, False, False, 0)
             return btn
 
-        start = icon_button("media-playback-start-symbolic", _("Start"),
-                            lambda: window.start_saved_timer(item))
-        start.get_style_context().add_class("suggested-action")
+        # No "suggested-action" here: some themes paint the symbolic icon
+        # white on a white button, and the ▶ disappears.
+        icon_button("media-playback-start-symbolic", _("Start"),
+                    lambda: window.start_saved_timer(item))
         icon_button("go-up-symbolic", _("Move up"),
                     lambda: window.move_saved_timer(index, -1), index > 0)
         icon_button("go-down-symbolic", _("Move down"),
