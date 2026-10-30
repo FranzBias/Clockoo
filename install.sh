@@ -27,7 +27,7 @@ APPS="$HOME/.local/share/applications"
 # Install folder: $CLOCKOO_DIR, else where an earlier install already is
 # (read from its launcher, so updates never move it), else the default.
 EXISTING="$(sed -n 's|^Exec=/usr/bin/python3 \(.*\)/clockoo_gui.py$|\1|p' \
-    "$APPS/clockoo.desktop" 2>/dev/null | head -n 1)"
+    "$APPS/clockoo.desktop" 2>/dev/null | head -n 1 || true)"
 DEST="${CLOCKOO_DIR:-${EXISTING:-$HOME/.local/share/Clockoo/app}}"
 AUTOSTART="$HOME/.config/autostart"
 ICONS="$HOME/.local/share/icons/hicolor/scalable/apps"

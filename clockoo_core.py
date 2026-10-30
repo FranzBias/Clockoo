@@ -41,7 +41,7 @@ from pathlib import Path
 
 APP_NAME = "Clockoo"
 APP_ID = "clockoo"
-VERSION = "0.7.0"
+VERSION = "0.7.1"
 
 # "app" = the GTK app, "applet" = the Cinnamon applet. Every timer unit
 # carries the profile in its environment, so clockoo_ring.py reads the

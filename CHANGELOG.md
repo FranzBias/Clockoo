@@ -3,6 +3,14 @@
 All notable changes to Clockoo (the GTK app). The Cinnamon applet
 `clockoo@FranzBias` follows the same version numbers.
 
+## 0.7.1 — 2026-10-30
+
+- **Fix: `install.sh` on a computer where Clockoo was never installed.**
+  The script stopped silently right at the start: it looks for the
+  launcher of an earlier install, and with `set -euo pipefail` a missing
+  launcher made that lookup fail. Now a fresh install works.
+  App only; nothing else changes.
+
 ## 0.7.0 — 2026-10-27
 
 - **Pause / resume** for every running timer, a pomodoro phase included
